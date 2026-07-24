@@ -1,0 +1,13 @@
+package service
+
+type HealthService struct{}
+
+func NewHealthService() *HealthService {
+	return &HealthService{}
+}
+
+func (s *HealthService) Status() map[string]string {
+	return map[string]string{
+		"status": "ok",
+	}
+}

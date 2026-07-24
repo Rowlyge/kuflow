@@ -1,35 +1,25 @@
--- ==========================================
--- Migration: 001_init.sql
--- Description: Create requests table
--- ==========================================
+-- =====================================================
+-- KuFlow Database Schema v1
+-- Initial migration
+-- =====================================================
 
-CREATE TABLE requests (
+CREATE TABLE requests
+(
     id BIGSERIAL PRIMARY KEY,
 
-    method VARCHAR(10) NOT NULL,
+    method VARCHAR(16) NOT NULL,
 
-    host VARCHAR(255) NOT NULL,
+    url TEXT NOT NULL,
 
-    path TEXT NOT NULL,
+    client_ip VARCHAR(64) NOT NULL,
 
-    status_code SMALLINT NOT NULL,
+    user_agent TEXT NOT NULL,
 
-    request_size INTEGER NOT NULL,
-
-    response_size INTEGER NOT NULL,
-
-    latency_ms INTEGER NOT NULL,
-
-    client_ip INET,
-
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
-
-CREATE INDEX idx_requests_host
-ON requests(host);
 
 CREATE INDEX idx_requests_created_at
 ON requests(created_at);
 
-CREATE INDEX idx_requests_status
-ON requests(status_code);
+CREATE INDEX idx_requests_method
+ON requests(method);

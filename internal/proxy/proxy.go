@@ -1,0 +1,27 @@
+package proxy
+
+import (
+	"net/http"
+	"net/http/httputil"
+	"net/url"
+)
+
+type Proxy struct {
+	reverseProxy *httputil.ReverseProxy
+}
+
+func New(target string) (*Proxy, error) {
+
+	targetURL, err := url.Parse(target)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Proxy{
+		reverseProxy: httputil.NewSingleHostReverseProxy(targetURL),
+	}, nil
+}
+
+func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	p.reverseProxy.ServeHTTP(w, r)
+}
