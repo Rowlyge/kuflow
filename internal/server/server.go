@@ -7,11 +7,16 @@ import (
 	"github.com/Rowlyge/kuflow/internal/router"
 )
 
-func Start(app *app.App) error {
-	mux := router.New(app)
+// Start запускает HTTP-сервер приложения.
+func Start(application *app.App) error {
+
+	mux := router.New(
+		application.Handlers,
+		application.Services,
+	)
 
 	return http.ListenAndServe(
-		":"+app.Config.Server.Port,
+		":"+application.Config.Server.Port,
 		mux,
 	)
 }

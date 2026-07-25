@@ -4,20 +4,35 @@ import (
 	"net/http"
 
 	"github.com/Rowlyge/kuflow/internal/app"
-	"github.com/Rowlyge/kuflow/internal/handler"
+	"github.com/Rowlyge/kuflow/internal/middleware"
 )
 
-func New(app *app.App) *http.ServeMux {
+// New создаёт маршруты приложения.
+func New(
+	handlers *app.Handlers,
+	services *app.Services,
+) *http.ServeMux {
 
 	mux := http.NewServeMux()
 
-	healthHandler := handler.NewHealthHandler(
-		app.Services.Health,
+	// Проверка состояния сервиса.
+	mux.Handle(
+		"/health",
+		middleware.Default(
+			http.HandlerFunc(
+				handlers.Health.GetStatus,
+			),
+			services.Telemetry,
+		),
 	)
 
-	mux.HandleFunc(
-		"/health",
-		healthHandler.GetStatus,
+	// Все запросы /proxy/... пересылаются целевому серверу.
+	mux.Handle(
+		"/proxy/",
+		middleware.Default(
+			services.Proxy,
+			services.Telemetry,
+		),
 	)
 
 	return mux
