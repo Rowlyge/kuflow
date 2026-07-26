@@ -2,64 +2,44 @@ package middleware
 
 import (
 	"log"
-	"net"
 	"net/http"
 	"time"
-)
 
-// LoggerMiddleware отвечает только за логирование запросов.
-type LoggerMiddleware struct{}
+	"github.com/Rowlyge/kuflow/internal/requestid"
+)
 
 // NewLogger создаёт middleware логирования.
 func NewLogger() Middleware {
 
-	logger := &LoggerMiddleware{}
+	return func(next http.Handler) http.Handler {
 
-	return logger.Handler
-}
+		return http.HandlerFunc(func(
+			w http.ResponseWriter,
+			r *http.Request,
+		) {
 
-// Handler выполняется для каждого HTTP-запроса.
-func (l *LoggerMiddleware) Handler(next http.Handler) http.Handler {
+			start := time.Now()
 
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			writer := &ResponseWriter{
+				ResponseWriter: w,
+			}
 
-		start := time.Now()
+			next.ServeHTTP(
+				writer,
+				r,
+			)
 
-		rw := NewResponseWriter(w)
+			duration := time.Since(start)
 
-		next.ServeHTTP(rw, r)
-
-		requestID, _ := r.Context().
-			Value(RequestIDKey).(string)
-
-		log.Printf(
-			"[%s] %s %s -> %d (%v) IP=%s",
-			requestID,
-			r.Method,
-			r.URL.Path,
-			rw.StatusCode,
-			time.Since(start),
-			clientIP(r),
-		)
-	})
-}
-
-// clientIP пытается определить реальный IP клиента.
-func clientIP(r *http.Request) string {
-
-	if ip := r.Header.Get("X-Forwarded-For"); ip != "" {
-		return ip
+			log.Printf(
+				"[%s] %s %s | status=%d | duration=%s | ip=%s",
+				requestid.FromContext(r.Context()),
+				r.Method,
+				r.URL.Path,
+				writer.StatusCode(),
+				duration.Round(time.Millisecond),
+				r.RemoteAddr,
+			)
+		})
 	}
-
-	if ip := r.Header.Get("X-Real-IP"); ip != "" {
-		return ip
-	}
-
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-
-	if err != nil {
-		return r.RemoteAddr
-	}
-
-	return host
 }

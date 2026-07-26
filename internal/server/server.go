@@ -10,10 +10,7 @@ import (
 // Start запускает HTTP-сервер приложения.
 func Start(application *app.App) error {
 
-	mux := router.New(
-		application.Handlers,
-		application.Services,
-	)
+	mux := router.New(application)
 
 	return http.ListenAndServe(
 		":"+application.Config.Server.Port,

@@ -2,23 +2,28 @@ package middleware
 
 import "net/http"
 
+// ResponseWriter сохраняет HTTP-статус,
+// отправленный клиенту.
 type ResponseWriter struct {
 	http.ResponseWriter
 
-	StatusCode int
+	statusCode int
 }
 
-func NewResponseWriter(w http.ResponseWriter) *ResponseWriter {
+// WriteHeader перехватывает статус ответа.
+func (w *ResponseWriter) WriteHeader(statusCode int) {
 
-	return &ResponseWriter{
-		ResponseWriter: w,
-		StatusCode:     http.StatusOK,
+	w.statusCode = statusCode
+
+	w.ResponseWriter.WriteHeader(statusCode)
+}
+
+// StatusCode возвращает HTTP-статус.
+func (w *ResponseWriter) StatusCode() int {
+
+	if w.statusCode == 0 {
+		return http.StatusOK
 	}
-}
 
-func (rw *ResponseWriter) WriteHeader(code int) {
-
-	rw.StatusCode = code
-
-	rw.ResponseWriter.WriteHeader(code)
+	return w.statusCode
 }

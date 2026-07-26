@@ -2,14 +2,12 @@ package middleware
 
 import "net/http"
 
-// Middleware описывает функцию, которая получает следующий обработчик
-// и возвращает новый обработчик с дополнительной логикой.
+// Middleware описывает функцию,
+// которая оборачивает HTTP-обработчик.
 type Middleware func(http.Handler) http.Handler
 
-// Chain объединяет несколько middleware в одну цепочку.
-//
-// Middleware оборачиваются в обратном порядке,
-// чтобы первый переданный middleware оказался внешним.
+// Chain объединяет несколько middleware
+// в одну цепочку.
 func Chain(
 	handler http.Handler,
 	middlewares ...Middleware,
@@ -20,4 +18,17 @@ func Chain(
 	}
 
 	return handler
+}
+
+// Default возвращает стандартную
+// цепочку middleware KuFlow.
+func Default(
+	handler http.Handler,
+	middlewares ...Middleware,
+) http.Handler {
+
+	return Chain(
+		handler,
+		middlewares...,
+	)
 }

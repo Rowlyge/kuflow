@@ -5,6 +5,7 @@ import "github.com/Rowlyge/kuflow/internal/middleware"
 // Middlewares объединяет middleware приложения.
 type Middlewares struct {
 	Logger    middleware.Middleware
+	RequestID middleware.Middleware
 	Telemetry middleware.Middleware
 }
 
@@ -16,6 +17,8 @@ func NewMiddlewares(
 	return &Middlewares{
 
 		Logger: middleware.NewLogger(),
+
+		RequestID: middleware.NewRequestID(),
 
 		Telemetry: middleware.NewTelemetry(
 			services.Telemetry,
