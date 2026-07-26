@@ -1,25 +1,35 @@
 package service
 
 import (
+	"net/http"
+
 	"github.com/Rowlyge/kuflow/internal/proxy"
 )
 
+// ProxyService отвечает за обработку всех проксируемых запросов.
 type ProxyService struct {
-	proxy *proxy.Proxy
+	engine *proxy.Engine
 }
 
-func NewProxyService(target string) (*ProxyService, error) {
+// NewProxyService создаёт сервис прокси.
+func NewProxyService(
+	target string,
+) (*ProxyService, error) {
 
-	p, err := proxy.New(target)
+	engine, err := proxy.NewEngine(target)
 	if err != nil {
 		return nil, err
 	}
 
 	return &ProxyService{
-		proxy: p,
+		engine: engine,
 	}, nil
 }
 
-func (s *ProxyService) Proxy() *proxy.Proxy {
-	return s.proxy
+// ServeHTTP делает ProxyService обычным HTTP-обработчиком.
+func (s *ProxyService) ServeHTTP(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	s.engine.ReverseProxy().ServeHTTP(w, r)
 }
