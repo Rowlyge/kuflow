@@ -8,10 +8,7 @@ import (
 )
 
 // New создаёт маршруты приложения.
-func New(
-	handlers *app.Handlers,
-	services *app.Services,
-) *http.ServeMux {
+func New(app *app.App) *http.ServeMux {
 
 	mux := http.NewServeMux()
 
@@ -20,18 +17,25 @@ func New(
 		"/health",
 		middleware.Default(
 			http.HandlerFunc(
-				handlers.Health.GetStatus,
+				app.Handlers.Health.GetStatus,
 			),
-			services.Telemetry,
+
+			app.Middlewares.Logger,
+			app.Middlewares.RequestID,
+			app.Middlewares.Telemetry,
 		),
 	)
 
-	// Все запросы /proxy/... пересылаются целевому серверу.
+	// Все запросы /proxy/... пересылаются
+	// целевому серверу.
 	mux.Handle(
 		"/proxy/",
 		middleware.Default(
-			services.Proxy,
-			services.Telemetry,
+			app.Services.Proxy,
+
+			app.Middlewares.Logger,
+			app.Middlewares.RequestID,
+			app.Middlewares.Telemetry,
 		),
 	)
 

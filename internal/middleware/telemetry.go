@@ -31,7 +31,9 @@ func (t *TelemetryMiddleware) Handler(next http.Handler) http.Handler {
 
 		start := time.Now()
 
-		rw := NewResponseWriter(w)
+		rw := &ResponseWriter{
+			ResponseWriter: w,
+		}
 
 		next.ServeHTTP(rw, r)
 
