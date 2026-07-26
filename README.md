@@ -1,95 +1,292 @@
+<div align="center">
+
 # KuFlow
 
-> High-performance HTTP Proxy and Telemetry Platform written in Go.
+### High-performance Reverse Proxy and Telemetry Platform written in Go
 
-## Overview
+![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791?logo=postgresql)
+![Docker](https://img.shields.io/badge/Docker-Enabled-2496ED?logo=docker)
+![License](https://img.shields.io/badge/License-MIT-green)
+![Status](https://img.shields.io/badge/Status-Active%20Development-orange)
 
-KuFlow is an educational open-source project developed by two Computer Engineering students.
+Production-inspired reverse proxy built to explore modern Go backend development,
+network programming, telemetry collection and distributed systems architecture.
 
-The main purpose of the project is to build a production-like HTTP proxy server while learning:
+</div>
 
-- Backend Development
+---
+
+# Vision
+
+KuFlow is an open-source educational project created by two Computer Engineering students.
+
+The project aims to evolve into a modular, production-ready reverse proxy platform focused on:
+
+- performance
+- observability
+- maintainability
+- extensibility
+
+Rather than building a simple HTTP forwarder, KuFlow is designed to resemble the architecture of real backend infrastructure used in production environments.
+
+---
+
+# Goals
+
+This project is intended to gain practical experience in:
+
+- Go Backend Development
+- HTTP Reverse Proxy
 - Networking
-- Data Engineering
+- Distributed Systems
+- Clean Architecture
 - System Design
-- Docker
 - PostgreSQL
-- Go
-
-Instead of only forwarding HTTP requests, KuFlow also collects telemetry for further analysis.
+- Docker
+- Telemetry
+- Observability
+- API Design
+- Concurrent Programming
 
 ---
 
-## Features
+# Current Features
 
-- HTTP request forwarding
-- Telemetry collection
-- PostgreSQL storage
-- Dockerized infrastructure
+- HTTP server
+- Reverse Proxy foundation
+- Middleware pipeline
+- Request logging
+- Request ID generation
+- Telemetry architecture
+- PostgreSQL integration
 - SQL migrations
-- Clean project architecture
+- Environment configuration (.env)
+- Dependency Injection (App container)
+- Layered architecture
 
 ---
 
-## Technology Stack
+# Technology Stack
 
-| Layer | Technology |
-|--------|------------|
+| Category | Technology |
+|-----------|------------|
 | Language | Go |
-| Database | PostgreSQL |
+| HTTP | net/http |
+| Database | PostgreSQL 16 |
+| Database Driver | pgx/v5 |
 | Containers | Docker |
-| Version Control | Git |
+| Version Control | Git + GitHub |
 | IDE | VS Code |
-| OS | Ubuntu (WSL) |
+| Development OS | Ubuntu (WSL) |
 
 ---
 
-## Project Structure
+# Architecture Overview
+
+```text
+                    HTTP Request
+                          │
+                          ▼
+                 Middleware Pipeline
+        (Logger • RequestID • Telemetry)
+                          │
+                          ▼
+                     HTTP Handlers
+                          │
+                          ▼
+                        Services
+                          │
+                          ▼
+                     Repositories
+                          │
+                          ▼
+                      PostgreSQL
+```
+
+The application follows a layered architecture with dependency injection through a central `App` container.
+
+---
+
+# Project Structure
 
 ```text
 kuflow/
 │
+├── cmd/
+│   └── kuflow/
+│
+├── internal/
+│   ├── app/
+│   ├── config/
+│   ├── database/
+│   ├── handler/
+│   ├── middleware/
+│   ├── model/
+│   ├── proxy/
+│   ├── repository/
+│   ├── requestid/
+│   ├── router/
+│   ├── server/
+│   └── service/
+│
 ├── docs/
+│   ├── api.md
 │   ├── architecture.md
+│   ├── coding-style.md
 │   ├── database.md
+│   ├── decisions.md
+│   ├── deployment.md
+│   ├── development.md
+│   ├── networking.md
 │   └── roadmap.md
 │
 ├── migrations/
 │
-├── proxy/
-│
-├── database/
-│
-├── scripts/
-│
 ├── docker-compose.yml
 ├── .env.example
-├── .gitignore
+├── go.mod
+├── go.sum
 ├── LICENSE
 └── README.md
 ```
 
 ---
 
-## Development Principles
+# Getting Started
 
-- Keep architecture simple.
-- Write readable code.
-- Document important decisions.
-- Use version-controlled database migrations.
-- Prefer explicit solutions over hidden magic.
+## Clone repository
 
----
+```bash
+git clone git@github.com:Rowlyge/kuflow.git
 
-## Current Status
-
-Project is currently in the architecture and database design stage.
-
-The next milestone is implementing the first HTTP proxy service.
+cd kuflow
+```
 
 ---
 
-## Authors
+## Start PostgreSQL
 
-- Michail Sokun
-- Georgiy Kuzin
+```bash
+docker compose up -d
+```
+
+---
+
+## Install dependencies
+
+```bash
+go mod tidy
+```
+
+---
+
+## Configure environment
+
+```bash
+cp .env.example .env
+```
+
+Edit the configuration if necessary.
+
+---
+
+## Run the application
+
+```bash
+go run ./cmd/kuflow
+```
+
+Server:
+
+```
+http://localhost:8080
+```
+
+Health endpoint:
+
+```
+GET /health
+```
+
+---
+
+# Development Workflow
+
+Main branches:
+
+- `main` — stable branch
+- `develop` — active development
+
+Feature development is performed in separate branches and merged into `develop` using Pull Requests.
+
+---
+
+# Roadmap
+
+The project is planned to include:
+
+- Reverse Proxy Engine
+- Multiple upstream servers
+- Round Robin load balancing
+- Least Connections balancing
+- Passive health checks
+- Active health checks
+- Retry policy
+- Rate limiting
+- Authentication
+- Structured logging
+- Metrics
+- Prometheus integration
+- Configuration hot reload
+- Admin API
+- Dashboard
+- Request analytics
+
+---
+
+# Documentation
+
+Complete project documentation is available in the `docs/` directory.
+
+- Architecture
+- Database Design
+- API Specification
+- Development Guide
+- Deployment
+- Networking
+- Coding Style
+- Design Decisions
+- Roadmap
+
+---
+
+# Current Status
+
+Current progress:
+
+- Architecture completed
+- PostgreSQL integrated
+- Middleware pipeline implemented
+- Reverse Proxy foundation implemented
+- Dependency Injection implemented
+
+### Next milestone
+
+Develop a production-ready Reverse Proxy Engine with intelligent request forwarding and telemetry collection.
+
+---
+
+# Authors
+
+**Michail Sokun**
+
+**Georgiy Kuzin**
+
+---
+
+<div align="center">
+
+Made with Go, PostgreSQL and Docker.
+
+</div>
