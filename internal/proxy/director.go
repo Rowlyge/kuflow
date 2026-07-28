@@ -2,37 +2,58 @@ package proxy
 
 import (
 	"net/http"
-	"net/url"
+
+	"github.com/Rowlyge/kuflow/internal/balancer"
 )
 
-// newDirector подготавливает запрос
-// перед отправкой на upstream.
+// newDirector создаёт Director для Reverse Proxy.
+//
+// Director вызывается перед каждым запросом.
+// Он выбирает upstream через балансировщик
+// и изменяет запрос так, чтобы он был отправлен
+// выбранному серверу.
 func newDirector(
-	target *url.URL,
+	b balancer.Balancer,
 ) func(*http.Request) {
 
-	return func(r *http.Request) {
+	return func(req *http.Request) {
 
-		// Сохраняем Host, к которому обратился клиент.
-		originalHost := r.Host
+		// Получаем следующий upstream.
+		upstream, err := b.Next()
+		if err != nil {
+			// Пока просто ничего не делаем.
+			// В будущем здесь появится обработка ситуации,
+			// когда нет доступных upstream-серверов.
+			return
+		}
 
-		// Настраиваем URL целевого сервера.
-		r.URL.Scheme = target.Scheme
-		r.URL.Host = target.Host
+		// Меняем адрес назначения.
+		req.URL.Scheme = upstream.URL.Scheme
+		req.URL.Host = upstream.URL.Host
 
-		// Изменяем путь.
-		rewritePath(r)
+		// Host передаём целевому серверу.
+		originalHost := req.Host
 
-		// Удаляем запрещённые заголовки.
-		removeHopHeaders(r.Header)
+		req.URL.Scheme = upstream.URL.Scheme
+		req.URL.Host = upstream.URL.Host
+		req.Host = upstream.URL.Host
 
-		// Восстанавливаем Host для формирования
-		// X-Forwarded-* заголовков.
-		r.Host = originalHost
+		req.Header.Set(
+			"X-Forwarded-Host",
+			originalHost,
+		)
 
-		addForwardHeaders(r)
+		// Передаём оригинальную схему.
+		req.Header.Set(
+			"X-Forwarded-Proto",
+			req.URL.Scheme,
+		)
 
-		// После этого Host меняется на upstream.
-		r.Host = target.Host
+		// Если запрос пришёл по HTTP,
+		// можно считать RemoteAddr клиентом.
+		req.Header.Set(
+			"X-Forwarded-For",
+			req.RemoteAddr,
+		)
 	}
 }

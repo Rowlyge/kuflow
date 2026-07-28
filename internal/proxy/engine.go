@@ -1,46 +1,58 @@
 package proxy
 
 import (
+	"net/http"
 	"net/http/httputil"
-	"net/url"
+
+	"github.com/Rowlyge/kuflow/internal/balancer"
 )
 
-// Engine управляет Reverse Proxy и его настройками.
+// Engine управляет жизненным циклом Reverse Proxy.
 type Engine struct {
-	target *url.URL
 
+	// Алгоритм выбора upstream.
+	balancer balancer.Balancer
+
+	// Настроенный Reverse Proxy.
 	proxy *httputil.ReverseProxy
 }
 
-// NewEngine создаёт и настраивает Proxy Engine.
+// NewEngine создаёт Proxy Engine.
 func NewEngine(
-	target string,
+	b balancer.Balancer,
 ) (*Engine, error) {
 
-	u, err := url.Parse(target)
-	if err != nil {
-		return nil, err
+	// Собираем Reverse Proxy вручную,
+	// чтобы полностью контролировать его поведение.
+	rp := &httputil.ReverseProxy{
+
+		Director: newDirector(b),
+
+		Transport: newTransport(),
+
+		ModifyResponse: newModifyResponse(),
+
+		ErrorHandler: newErrorHandler(),
+
+		// Позже здесь появятся:
+		//
+		// BufferPool
+		// FlushInterval
+		// Rewrite
 	}
-
-	reverseProxy := httputil.NewSingleHostReverseProxy(u)
-
-	reverseProxy.Director = newDirector(u)
-
-	reverseProxy.Transport = newTransport()
-
-	reverseProxy.ModifyResponse = newModifyResponse()
-
-	reverseProxy.ErrorHandler = newErrorHandler()
 
 	return &Engine{
 
-		target: u,
+		balancer: b,
 
-		proxy: reverseProxy,
+		proxy: rp,
 	}, nil
 }
 
-// ReverseProxy возвращает настроенный Reverse Proxy.
-func (e *Engine) ReverseProxy() *httputil.ReverseProxy {
-	return e.proxy
+// ServeHTTP реализует http.Handler.
+func (e *Engine) ServeHTTP(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	e.proxy.ServeHTTP(w, r)
 }
