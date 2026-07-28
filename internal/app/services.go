@@ -1,8 +1,10 @@
 package app
 
 import (
+	"github.com/Rowlyge/kuflow/internal/balancer"
 	"github.com/Rowlyge/kuflow/internal/config"
 	"github.com/Rowlyge/kuflow/internal/service"
+	"github.com/Rowlyge/kuflow/internal/upstream"
 )
 
 // Services объединяет бизнес-логику приложения.
@@ -18,8 +20,24 @@ func NewServices(
 	repositories *Repositories,
 ) (*Services, error) {
 
-	proxyService, err := service.NewProxyService(
+	// Создаём менеджер upstream-серверов.
+	upstreamManager, err := upstream.NewManager(
 		cfg.Proxy.Target,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Создаём балансировщик.
+	// Пока используется Round Robin,
+	// который работает с одним сервером.
+	proxyBalancer := balancer.NewRoundRobin(
+		upstreamManager,
+	)
+
+	// Создаём сервис Reverse Proxy.
+	proxyService, err := service.NewProxyService(
+		proxyBalancer,
 	)
 	if err != nil {
 		return nil, err
