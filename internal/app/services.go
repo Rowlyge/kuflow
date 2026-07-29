@@ -22,7 +22,7 @@ func NewServices(
 
 	// Создаём менеджер upstream-серверов.
 	upstreamManager, err := upstream.NewManager(
-		cfg.Proxy.Target,
+		cfg.Proxy.Upstreams,
 	)
 	if err != nil {
 		return nil, err

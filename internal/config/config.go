@@ -3,6 +3,7 @@ package config
 import (
 	"log"
 	"os"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -27,7 +28,8 @@ type DatabaseConfig struct {
 }
 
 type ProxyConfig struct {
-	Target string
+	// Список upstream-серверов.
+	Upstreams []string
 }
 
 func Load() *Config {
@@ -51,12 +53,38 @@ func Load() *Config {
 		},
 
 		Proxy: ProxyConfig{
-			Target: getEnv("PROXY_TARGET", "https://httpbin.org"),
+			Upstreams: getUpstreams(),
 		},
 	}
 }
 
+// getUpstreams читает список upstream-серверов
+// из переменной окружения PROXY_UPSTREAMS.
+func getUpstreams() []string {
+
+	value := getEnv(
+		"PROXY_UPSTREAMS",
+		"http://localhost:8081",
+	)
+
+	parts := strings.Split(value, ",")
+
+	upstreams := make([]string, 0, len(parts))
+
+	for _, part := range parts {
+
+		part = strings.TrimSpace(part)
+
+		if part != "" {
+			upstreams = append(upstreams, part)
+		}
+	}
+
+	return upstreams
+}
+
 func getEnv(key, defaultValue string) string {
+
 	if value, exists := os.LookupEnv(key); exists {
 		return value
 	}
