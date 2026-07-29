@@ -34,10 +34,20 @@ func (r *RoundRobin) Next() (*upstream.Upstream, error) {
 
 	upstreams := r.manager.Upstreams()
 
-	index := atomic.AddUint64(
-		&r.counter,
-		1,
-	)
+	// Пробуем обойти все upstream-серверы.
+	for i := 0; i < len(upstreams); i++ {
 
-	return upstreams[int(index-1)%len(upstreams)], nil
+		index := atomic.AddUint64(
+			&r.counter,
+			1,
+		)
+
+		server := upstreams[int(index-1)%len(upstreams)]
+
+		if server.Alive() {
+			return server, nil
+		}
+	}
+
+	return nil, fmt.Errorf("no healthy upstream available")
 }

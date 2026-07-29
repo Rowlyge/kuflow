@@ -11,26 +11,31 @@ type Manager struct {
 }
 
 // NewManager создаёт менеджер upstream-серверов.
-//
-// Пока поддерживается один сервер.
-// Позже список будет загружаться из конфигурации.
 func NewManager(
-	target string,
+	targets []string,
 ) (*Manager, error) {
 
-	u, err := url.Parse(target)
-	if err != nil {
-		return nil, err
+	upstreams := make([]*Upstream, 0, len(targets))
+
+	for i, target := range targets {
+
+		u, err := url.Parse(target)
+		if err != nil {
+			return nil, err
+		}
+
+		up := &Upstream{
+			Name: fmt.Sprintf("upstream-%d", i+1),
+			URL:  u,
+		}
+
+		up.SetAlive(true)
+
+		upstreams = append(upstreams, up)
 	}
 
 	return &Manager{
-		upstreams: []*Upstream{
-			{
-				Name:  "default",
-				URL:   u,
-				Alive: true,
-			},
-		},
+		upstreams: upstreams,
 	}, nil
 }
 
@@ -39,14 +44,12 @@ func (m *Manager) Upstreams() []*Upstream {
 	return m.upstreams
 }
 
-// Count возвращает количество upstream.
+// Count возвращает количество upstream-серверов.
 func (m *Manager) Count() int {
 	return len(m.upstreams)
 }
 
 // Default возвращает первый upstream.
-//
-// Пока используется только в тестах.
 func (m *Manager) Default() (*Upstream, error) {
 
 	if len(m.upstreams) == 0 {
