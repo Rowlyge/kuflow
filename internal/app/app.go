@@ -74,10 +74,11 @@ func New(cfg *config.Config) (*App, error) {
 }
 
 // Close освобождает все ресурсы приложения.
-func (a *App) Close() {
+func (a *App) Close() error {
 
-	// Останавливаем фоновые задачи.
-	a.Infrastructure.HealthChecker.Stop()
+	if a.DB != nil {
+		a.DB.Close()
+	}
 
-	a.DB.Close()
+	return nil
 }
