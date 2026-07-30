@@ -1,14 +1,18 @@
 package middleware
 
 import (
+	"log"
 	"net/http"
 	"time"
 
+	"github.com/Rowlyge/kuflow/internal/clientip"
+	"github.com/Rowlyge/kuflow/internal/model"
+	"github.com/Rowlyge/kuflow/internal/proxy"
 	"github.com/Rowlyge/kuflow/internal/service"
 )
 
-// TelemetryMiddleware собирает информацию о запросах
-// и в будущем будет сохранять её через TelemetryService.
+// TelemetryMiddleware собирает информацию
+// о каждом HTTP-запросе.
 type TelemetryMiddleware struct {
 	service *service.TelemetryService
 }
@@ -25,23 +29,50 @@ func NewTelemetry(
 	return t.Handler
 }
 
-func (t *TelemetryMiddleware) Handler(next http.Handler) http.Handler {
+// Handler собирает телеметрию после обработки запроса,
+// формирует полноценную модель и отправляет её в сервис.
+func (t *TelemetryMiddleware) Handler(
+	next http.Handler,
+) http.Handler {
 
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return http.HandlerFunc(func(
+		w http.ResponseWriter,
+		r *http.Request,
+	) {
 
 		start := time.Now()
 
-		rw := &ResponseWriter{
-			ResponseWriter: w,
-		}
+		rw := NewResponseWriter(w)
 
 		next.ServeHTTP(rw, r)
 
-		duration := time.Since(start)
+		request := &model.Request{
+			Method:       r.Method,
+			Path:         r.URL.Path,
+			StatusCode:   rw.StatusCode(),
+			Duration:     time.Since(start),
+			ResponseSize: rw.BytesWritten(),
+			ClientIP:     clientip.Get(r),
+			UserAgent:    r.UserAgent(),
 
-		// На следующем этапе здесь появится сохранение
-		// информации о запросе в PostgreSQL.
-		_ = duration
-		_ = rw
+			Upstream: proxy.UpstreamFromContext(
+				r.Context(),
+			),
+
+			CreatedAt: start,
+		}
+
+		// Ошибку логировать будем позже,
+		// когда появится общий Logger.
+		if err := t.service.Save(
+			r.Context(),
+			request,
+		); err != nil {
+
+			log.Printf(
+				"Telemetry: failed to save request: %v",
+				err,
+			)
+		}
 	})
 }

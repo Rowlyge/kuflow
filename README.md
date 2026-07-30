@@ -1,292 +1,196 @@
-<div align="center">
+[![GitHub Workflow Status (branch)](https://img.shields.io/github/actions/workflow/status/golang-migrate/migrate/ci.yaml?branch=master)](https://github.com/golang-migrate/migrate/actions/workflows/ci.yaml?query=branch%3Amaster)
+[![GoDoc](https://pkg.go.dev/badge/github.com/golang-migrate/migrate)](https://pkg.go.dev/github.com/golang-migrate/migrate/v4)
+[![Coverage Status](https://img.shields.io/coveralls/github/golang-migrate/migrate/master.svg)](https://coveralls.io/github/golang-migrate/migrate?branch=master)
+[![packagecloud.io](https://img.shields.io/badge/deb-packagecloud.io-844fec.svg)](https://packagecloud.io/golang-migrate/migrate?filter=debs)
+[![Docker Pulls](https://img.shields.io/docker/pulls/migrate/migrate.svg)](https://hub.docker.com/r/migrate/migrate/)
+![Supported Go Versions](https://img.shields.io/badge/Go-1.24%2C%201.25-lightgrey.svg)
+[![GitHub Release](https://img.shields.io/github/release/golang-migrate/migrate.svg)](https://github.com/golang-migrate/migrate/releases)
+[![Go Report Card](https://goreportcard.com/badge/github.com/golang-migrate/migrate/v4)](https://goreportcard.com/report/github.com/golang-migrate/migrate/v4)
 
-# KuFlow
+# migrate
 
-### High-performance Reverse Proxy and Telemetry Platform written in Go
+__Database migrations written in Go. Use as [CLI](#cli-usage) or import as [library](#use-in-your-go-project).__
 
-![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791?logo=postgresql)
-![Docker](https://img.shields.io/badge/Docker-Enabled-2496ED?logo=docker)
-![License](https://img.shields.io/badge/License-MIT-green)
-![Status](https://img.shields.io/badge/Status-Active%20Development-orange)
+* Migrate reads migrations from [sources](#migration-sources)
+   and applies them in correct order to a [database](#databases).
+* Drivers are "dumb", migrate glues everything together and makes sure the logic is bulletproof.
+   (Keeps the drivers lightweight, too.)
+* Database drivers don't assume things or try to correct user input. When in doubt, fail.
 
-Production-inspired reverse proxy built to explore modern Go backend development,
-network programming, telemetry collection and distributed systems architecture.
+Forked from [mattes/migrate](https://github.com/mattes/migrate)
 
-</div>
+## Databases
 
----
+Database drivers run migrations. [Add a new database?](database/driver.go)
 
-# Vision
+* [PostgreSQL](database/postgres)
+* [PGX v4](database/pgx)
+* [PGX v5](database/pgx/v5)
+* [Redshift](database/redshift)
+* [Ql](database/ql)
+* [Cassandra / ScyllaDB](database/cassandra)
+* [SQLite](database/sqlite)
+* [SQLite3](database/sqlite3) ([todo #165](https://github.com/mattes/migrate/issues/165))
+* [SQLCipher](database/sqlcipher)
+* [MySQL / MariaDB](database/mysql)
+* [Neo4j](database/neo4j)
+* [MongoDB](database/mongodb)
+* [CrateDB](database/crate) ([todo #170](https://github.com/mattes/migrate/issues/170))
+* [Shell](database/shell) ([todo #171](https://github.com/mattes/migrate/issues/171))
+* [Google Cloud Spanner](database/spanner)
+* [CockroachDB](database/cockroachdb)
+* [YugabyteDB](database/yugabytedb)
+* [ClickHouse](database/clickhouse)
+* [Firebird](database/firebird)
+* [MS SQL Server](database/sqlserver)
+* [rqlite](database/rqlite)
 
-KuFlow is an open-source educational project created by two Computer Engineering students.
+### Database URLs
 
-The project aims to evolve into a modular, production-ready reverse proxy platform focused on:
+Database connection strings are specified via URLs. The URL format is driver dependent but generally has the form: `dbdriver://username:password@host:port/dbname?param1=true&param2=false`
 
-- performance
-- observability
-- maintainability
-- extensibility
+Any [reserved URL characters](https://en.wikipedia.org/wiki/Percent-encoding#Percent-encoding_reserved_characters) need to be escaped. Note, the `%` character also [needs to be escaped](https://en.wikipedia.org/wiki/Percent-encoding#Percent-encoding_the_percent_character)
 
-Rather than building a simple HTTP forwarder, KuFlow is designed to resemble the architecture of real backend infrastructure used in production environments.
+Explicitly, the following characters need to be escaped:
+`!`, `#`, `$`, `%`, `&`, `'`, `(`, `)`, `*`, `+`, `,`, `/`, `:`, `;`, `=`, `?`, `@`, `[`, `]`
 
----
-
-# Goals
-
-This project is intended to gain practical experience in:
-
-- Go Backend Development
-- HTTP Reverse Proxy
-- Networking
-- Distributed Systems
-- Clean Architecture
-- System Design
-- PostgreSQL
-- Docker
-- Telemetry
-- Observability
-- API Design
-- Concurrent Programming
-
----
-
-# Current Features
-
-- HTTP server
-- Reverse Proxy foundation
-- Middleware pipeline
-- Request logging
-- Request ID generation
-- Telemetry architecture
-- PostgreSQL integration
-- SQL migrations
-- Environment configuration (.env)
-- Dependency Injection (App container)
-- Layered architecture
-
----
-
-# Technology Stack
-
-| Category | Technology |
-|-----------|------------|
-| Language | Go |
-| HTTP | net/http |
-| Database | PostgreSQL 16 |
-| Database Driver | pgx/v5 |
-| Containers | Docker |
-| Version Control | Git + GitHub |
-| IDE | VS Code |
-| Development OS | Ubuntu (WSL) |
-
----
-
-# Architecture Overview
-
-```text
-                    HTTP Request
-                          │
-                          ▼
-                 Middleware Pipeline
-        (Logger • RequestID • Telemetry)
-                          │
-                          ▼
-                     HTTP Handlers
-                          │
-                          ▼
-                        Services
-                          │
-                          ▼
-                     Repositories
-                          │
-                          ▼
-                      PostgreSQL
-```
-
-The application follows a layered architecture with dependency injection through a central `App` container.
-
----
-
-# Project Structure
-
-```text
-kuflow/
-│
-├── cmd/
-│   └── kuflow/
-│
-├── internal/
-│   ├── app/
-│   ├── config/
-│   ├── database/
-│   ├── handler/
-│   ├── middleware/
-│   ├── model/
-│   ├── proxy/
-│   ├── repository/
-│   ├── requestid/
-│   ├── router/
-│   ├── server/
-│   └── service/
-│
-├── docs/
-│   ├── api.md
-│   ├── architecture.md
-│   ├── coding-style.md
-│   ├── database.md
-│   ├── decisions.md
-│   ├── deployment.md
-│   ├── development.md
-│   ├── networking.md
-│   └── roadmap.md
-│
-├── migrations/
-│
-├── docker-compose.yml
-├── .env.example
-├── go.mod
-├── go.sum
-├── LICENSE
-└── README.md
-```
-
----
-
-# Getting Started
-
-## Clone repository
+It's easiest to always run the URL parts of your DB connection URL (e.g. username, password, etc) through an URL encoder. See the example Python snippets below:
 
 ```bash
-git clone git@github.com:Rowlyge/kuflow.git
-
-cd kuflow
+$ python3 -c 'import urllib.parse; print(urllib.parse.quote(input("String to encode: "), ""))'
+String to encode: FAKEpassword!#$%&'()*+,/:;=?@[]
+FAKEpassword%21%23%24%25%26%27%28%29%2A%2B%2C%2F%3A%3B%3D%3F%40%5B%5D
+$ python2 -c 'import urllib; print urllib.quote(raw_input("String to encode: "), "")'
+String to encode: FAKEpassword!#$%&'()*+,/:;=?@[]
+FAKEpassword%21%23%24%25%26%27%28%29%2A%2B%2C%2F%3A%3B%3D%3F%40%5B%5D
+$
 ```
 
----
+## Migration Sources
 
-## Start PostgreSQL
+Source drivers read migrations from local or remote sources. [Add a new source?](source/driver.go)
+
+* [Filesystem](source/file) - read from filesystem
+* [io/fs](source/iofs) - read from a Go [io/fs](https://pkg.go.dev/io/fs#FS)
+* [Go-Bindata](source/go_bindata) - read from embedded binary data ([jteeuwen/go-bindata](https://github.com/jteeuwen/go-bindata))
+* [pkger](source/pkger) - read from embedded binary data ([markbates/pkger](https://github.com/markbates/pkger))
+* [GitHub](source/github) - read from remote GitHub repositories
+* [GitHub Enterprise](source/github_ee) - read from remote GitHub Enterprise repositories
+* [Bitbucket](source/bitbucket) - read from remote Bitbucket repositories
+* [Gitlab](source/gitlab) - read from remote Gitlab repositories
+* [AWS S3](source/aws_s3) - read from Amazon Web Services S3
+* [Google Cloud Storage](source/google_cloud_storage) - read from Google Cloud Platform Storage
+
+## CLI usage
+
+* Simple wrapper around this library.
+* Handles ctrl+c (SIGINT) gracefully.
+* No config search paths, no config files, no magic ENV var injections.
+
+[CLI Documentation](cmd/migrate) (includes CLI install instructions)
+
+### Basic usage
 
 ```bash
-docker compose up -d
+$ migrate -source file://path/to/migrations -database postgres://localhost:5432/database up 2
 ```
 
----
-
-## Install dependencies
+### Docker usage
 
 ```bash
-go mod tidy
+$ docker run -v {{ migration dir }}:/migrations --network host migrate/migrate
+    -path=/migrations/ -database postgres://localhost:5432/database up 2
 ```
 
----
+## Use in your Go project
 
-## Configure environment
+* API is stable and frozen for this release (v3 & v4).
+* Uses [Go modules](https://golang.org/cmd/go/#hdr-Modules__module_versions__and_more) to manage dependencies.
+* To help prevent database corruptions, it supports graceful stops via `GracefulStop chan bool`.
+* Bring your own logger.
+* Uses `io.Reader` streams internally for low memory overhead.
+* Thread-safe and no goroutine leaks.
+
+__[Go Documentation](https://pkg.go.dev/github.com/golang-migrate/migrate/v4)__
+
+```go
+import (
+    "github.com/golang-migrate/migrate/v4"
+    _ "github.com/golang-migrate/migrate/v4/database/postgres"
+    _ "github.com/golang-migrate/migrate/v4/source/github"
+)
+
+func main() {
+    m, err := migrate.New(
+        "github://mattes:personal-access-token@mattes/migrate_test",
+        "postgres://localhost:5432/database?sslmode=enable")
+    m.Steps(2)
+}
+```
+
+Want to use an existing database client?
+
+```go
+import (
+    "database/sql"
+    _ "github.com/lib/pq"
+    "github.com/golang-migrate/migrate/v4"
+    "github.com/golang-migrate/migrate/v4/database/postgres"
+    _ "github.com/golang-migrate/migrate/v4/source/file"
+)
+
+func main() {
+    db, err := sql.Open("postgres", "postgres://localhost:5432/database?sslmode=enable")
+    driver, err := postgres.WithInstance(db, &postgres.Config{})
+    m, err := migrate.NewWithDatabaseInstance(
+        "file:///migrations",
+        "postgres", driver)
+    m.Up() // or m.Steps(2) if you want to explicitly set the number of migrations to run
+}
+```
+
+## Getting started
+
+Go to [getting started](GETTING_STARTED.md)
+
+## Tutorials
+
+* [CockroachDB](database/cockroachdb/TUTORIAL.md)
+* [PostgreSQL](database/postgres/TUTORIAL.md)
+
+(more tutorials to come)
+
+## Migration files
+
+Each migration has an up and down migration. [Why?](FAQ.md#why-two-separate-files-up-and-down-for-a-migration)
 
 ```bash
-cp .env.example .env
+1481574547_create_users_table.up.sql
+1481574547_create_users_table.down.sql
 ```
 
-Edit the configuration if necessary.
+[Best practices: How to write migrations.](MIGRATIONS.md)
+
+## Coming from another db migration tool?
+
+Check out [migradaptor](https://github.com/musinit/migradaptor/).
+*Note: migradaptor is not affiliated or supported by this project*
+
+## Versions
+
+Version | Supported? | Import | Notes
+--------|------------|--------|------
+**master** | :white_check_mark: | `import "github.com/golang-migrate/migrate/v4"` | New features and bug fixes arrive here first |
+**v4** | :white_check_mark: | `import "github.com/golang-migrate/migrate/v4"` | Used for stable releases |
+**v3** | :x: | `import "github.com/golang-migrate/migrate"` (with package manager) or `import "gopkg.in/golang-migrate/migrate.v3"` (not recommended) | **DO NOT USE** - No longer supported |
+
+## Development and Contributing
+
+Yes, please! [`Makefile`](Makefile) is your friend,
+read the [development guide](CONTRIBUTING.md).
+
+Also have a look at the [FAQ](FAQ.md).
 
 ---
 
-## Run the application
-
-```bash
-go run ./cmd/kuflow
-```
-
-Server:
-
-```
-http://localhost:8080
-```
-
-Health endpoint:
-
-```
-GET /health
-```
-
----
-
-# Development Workflow
-
-Main branches:
-
-- `main` — stable branch
-- `develop` — active development
-
-Feature development is performed in separate branches and merged into `develop` using Pull Requests.
-
----
-
-# Roadmap
-
-The project is planned to include:
-
-- Reverse Proxy Engine
-- Multiple upstream servers
-- Round Robin load balancing
-- Least Connections balancing
-- Passive health checks
-- Active health checks
-- Retry policy
-- Rate limiting
-- Authentication
-- Structured logging
-- Metrics
-- Prometheus integration
-- Configuration hot reload
-- Admin API
-- Dashboard
-- Request analytics
-
----
-
-# Documentation
-
-Complete project documentation is available in the `docs/` directory.
-
-- Architecture
-- Database Design
-- API Specification
-- Development Guide
-- Deployment
-- Networking
-- Coding Style
-- Design Decisions
-- Roadmap
-
----
-
-# Current Status
-
-Current progress:
-
-- Architecture completed
-- PostgreSQL integrated
-- Middleware pipeline implemented
-- Reverse Proxy foundation implemented
-- Dependency Injection implemented
-
-### Next milestone
-
-Develop a production-ready Reverse Proxy Engine with intelligent request forwarding and telemetry collection.
-
----
-
-# Authors
-
-**Michail Sokun**
-
-**Georgiy Kuzin**
-
----
-
-<div align="center">
-
-Made with Go, PostgreSQL and Docker.
-
-</div>
+Looking for alternatives? [https://awesome-go.com/#database](https://awesome-go.com/#database).
