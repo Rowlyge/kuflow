@@ -2,28 +2,62 @@ package middleware
 
 import "net/http"
 
-// ResponseWriter сохраняет HTTP-статус,
-// отправленный клиенту.
+// ResponseWriter оборачивает стандартный
+// http.ResponseWriter и позволяет получить
+// информацию об отправленном ответе.
 type ResponseWriter struct {
 	http.ResponseWriter
 
-	statusCode int
+	statusCode   int
+	bytesWritten int
 }
 
-// WriteHeader перехватывает статус ответа.
-func (w *ResponseWriter) WriteHeader(statusCode int) {
+// NewResponseWriter создаёт обёртку
+// над стандартным ResponseWriter.
+func NewResponseWriter(
+	w http.ResponseWriter,
+) *ResponseWriter {
 
-	w.statusCode = statusCode
+	return &ResponseWriter{
+		ResponseWriter: w,
 
-	w.ResponseWriter.WriteHeader(statusCode)
-}
-
-// StatusCode возвращает HTTP-статус.
-func (w *ResponseWriter) StatusCode() int {
-
-	if w.statusCode == 0 {
-		return http.StatusOK
+		// По стандарту net/http,
+		// если WriteHeader не вызывался,
+		// считается, что ответ имеет статус 200.
+		statusCode: http.StatusOK,
 	}
+}
 
+// WriteHeader сохраняет HTTP-статус
+// перед отправкой ответа клиенту.
+func (w *ResponseWriter) WriteHeader(
+	status int,
+) {
+	w.statusCode = status
+
+	w.ResponseWriter.WriteHeader(status)
+}
+
+// Write записывает тело ответа клиенту
+// и считает количество отправленных байт.
+func (w *ResponseWriter) Write(
+	data []byte,
+) (int, error) {
+
+	n, err := w.ResponseWriter.Write(data)
+
+	w.bytesWritten += n
+
+	return n, err
+}
+
+// StatusCode возвращает HTTP-статус ответа.
+func (w *ResponseWriter) StatusCode() int {
 	return w.statusCode
+}
+
+// BytesWritten возвращает количество
+// отправленных клиенту байт.
+func (w *ResponseWriter) BytesWritten() int {
+	return w.bytesWritten
 }
