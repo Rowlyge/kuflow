@@ -27,3 +27,19 @@ func (u *Upstream) Alive() bool {
 func (u *Upstream) SetAlive(value bool) {
 	u.alive.Store(value)
 }
+
+// UpdateAlive обновляет состояние сервера.
+//
+// Возвращает true, если состояние изменилось.
+func (u *Upstream) UpdateAlive(value bool) bool {
+
+	old := u.alive.Load()
+
+	if old == value {
+		return false
+	}
+
+	u.alive.Store(value)
+
+	return true
+}
