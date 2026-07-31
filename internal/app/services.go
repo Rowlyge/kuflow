@@ -46,6 +46,7 @@ func NewServices(
 
 		Telemetry: service.NewTelemetryService(
 			repositories.Request,
+			infrastructure.Collector,
 		),
 	}, nil
 }
