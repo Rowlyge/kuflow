@@ -51,3 +51,5 @@ func (r *RoundRobin) Next() (*upstream.Upstream, error) {
 
 	return nil, fmt.Errorf("no healthy upstream available")
 }
+
+var _ Balancer = (*RoundRobin)(nil)

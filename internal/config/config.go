@@ -1,93 +1,234 @@
 package config
 
 import (
-	"log"
-	"os"
 	"strings"
-
-	"github.com/joho/godotenv"
+	"time"
 )
 
+// Config объединяет всю конфигурацию приложения.
 type Config struct {
-	Server   ServerConfig
-	Database DatabaseConfig
-	Proxy    ProxyConfig
+	Server    ServerConfig
+	Proxy     ProxyConfig
+	Health    HealthConfig
+	Telemetry TelemetryConfig
+	Database  DatabaseConfig
 }
 
+// ==========================
+// Server
+// ==========================
+
+// ServerConfig содержит настройки HTTP-сервера.
 type ServerConfig struct {
 	Port string
+
+	ReadTimeout  time.Duration
+	WriteTimeout time.Duration
+	IdleTimeout  time.Duration
 }
 
-type DatabaseConfig struct {
-	Host     string
-	Port     string
-	User     string
-	Password string
-	Name     string
-	SSLMode  string
-}
+// ==========================
+// Proxy
+// ==========================
 
+// ProxyConfig содержит настройки Reverse Proxy.
 type ProxyConfig struct {
-	// Список upstream-серверов.
 	Upstreams []string
+
+	// round_robin, random, least_connections...
+	Balancer string
+
+	DialTimeout           time.Duration
+	ResponseHeaderTimeout time.Duration
+	FlushInterval         time.Duration
 }
 
+// ==========================
+// Health Checker
+// ==========================
+
+// HealthConfig содержит настройки Health Checker.
+type HealthConfig struct {
+	Enabled bool
+
+	Interval time.Duration
+	Timeout  time.Duration
+
+	Path string
+}
+
+// ==========================
+// Telemetry
+// ==========================
+
+// TelemetryConfig содержит настройки телеметрии.
+type TelemetryConfig struct {
+	Enabled bool
+
+	// Позже позволит писать телеметрию
+	// через очередь.
+	Async bool
+}
+
+// ==========================
+// Database
+// ==========================
+
+// DatabaseConfig содержит настройки PostgreSQL.
+type DatabaseConfig struct {
+	URL string
+}
+
+// =====================================================
+// Load
+// =====================================================
+
+// Load загружает всю конфигурацию приложения.
 func Load() *Config {
 
-	if err := godotenv.Load(); err != nil {
-		log.Println("Config: .env file not found, using system environment")
-	}
-
 	return &Config{
-		Server: ServerConfig{
-			Port: getEnv("PORT", "8080"),
-		},
 
-		Database: DatabaseConfig{
-			Host:     getEnv("DB_HOST", "localhost"),
-			Port:     getEnv("DB_PORT", "5432"),
-			User:     getEnv("DB_USER", "proxy"),
-			Password: getEnv("DB_PASSWORD", "proxy"),
-			Name:     getEnv("DB_NAME", "proxydb"),
-			SSLMode:  getEnv("DB_SSLMODE", "disable"),
-		},
+		Server: loadServerConfig(),
 
-		Proxy: ProxyConfig{
-			Upstreams: getUpstreams(),
-		},
+		Proxy: loadProxyConfig(),
+
+		Health: loadHealthConfig(),
+
+		Telemetry: loadTelemetryConfig(),
+
+		Database: loadDatabaseConfig(),
 	}
 }
 
-// getUpstreams читает список upstream-серверов
-// из переменной окружения PROXY_UPSTREAMS.
-func getUpstreams() []string {
+// =====================================================
+// Server
+// =====================================================
 
-	value := getEnv(
-		"PROXY_UPSTREAMS",
-		"http://localhost:8081",
-	)
+func loadServerConfig() ServerConfig {
 
-	parts := strings.Split(value, ",")
+	return ServerConfig{
 
-	upstreams := make([]string, 0, len(parts))
+		Port: getEnv(
+			"SERVER_PORT",
+			"8080",
+		),
 
-	for _, part := range parts {
+		ReadTimeout: mustDuration(
+			"SERVER_READ_TIMEOUT",
+			10*time.Second,
+		),
 
-		part = strings.TrimSpace(part)
+		WriteTimeout: mustDuration(
+			"SERVER_WRITE_TIMEOUT",
+			30*time.Second,
+		),
 
-		if part != "" {
-			upstreams = append(upstreams, part)
-		}
+		IdleTimeout: mustDuration(
+			"SERVER_IDLE_TIMEOUT",
+			60*time.Second,
+		),
 	}
-
-	return upstreams
 }
 
-func getEnv(key, defaultValue string) string {
+// =====================================================
+// Proxy
+// =====================================================
 
-	if value, exists := os.LookupEnv(key); exists {
-		return value
+func loadProxyConfig() ProxyConfig {
+
+	return ProxyConfig{
+
+		Upstreams: strings.Split(
+			getEnv(
+				"PROXY_UPSTREAMS",
+				"http://localhost:8081",
+			),
+			",",
+		),
+
+		Balancer: getEnv(
+			"PROXY_BALANCER",
+			"round_robin",
+		),
+
+		DialTimeout: mustDuration(
+			"PROXY_DIAL_TIMEOUT",
+			5*time.Second,
+		),
+
+		ResponseHeaderTimeout: mustDuration(
+			"PROXY_RESPONSE_HEADER_TIMEOUT",
+			10*time.Second,
+		),
+
+		FlushInterval: mustDuration(
+			"PROXY_FLUSH_INTERVAL",
+			100*time.Millisecond,
+		),
 	}
+}
 
-	return defaultValue
+// =====================================================
+// Health Checker
+// =====================================================
+
+func loadHealthConfig() HealthConfig {
+
+	return HealthConfig{
+
+		Enabled: mustBool(
+			"HEALTH_ENABLED",
+			true,
+		),
+
+		Interval: mustDuration(
+			"HEALTH_INTERVAL",
+			5*time.Second,
+		),
+
+		Timeout: mustDuration(
+			"HEALTH_TIMEOUT",
+			2*time.Second,
+		),
+
+		Path: getEnv(
+			"HEALTH_PATH",
+			"/health",
+		),
+	}
+}
+
+// =====================================================
+// Telemetry
+// =====================================================
+
+func loadTelemetryConfig() TelemetryConfig {
+
+	return TelemetryConfig{
+
+		Enabled: mustBool(
+			"TELEMETRY_ENABLED",
+			true,
+		),
+
+		Async: mustBool(
+			"TELEMETRY_ASYNC",
+			false,
+		),
+	}
+}
+
+// =====================================================
+// Database
+// =====================================================
+
+func loadDatabaseConfig() DatabaseConfig {
+
+	return DatabaseConfig{
+
+		URL: getEnv(
+			"DATABASE_URL",
+			"",
+		),
+	}
 }

@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"net/http"
-	"time"
 
 	"github.com/Rowlyge/kuflow/internal/app"
 	"github.com/Rowlyge/kuflow/internal/router"
@@ -21,14 +20,16 @@ func New(
 
 	mux := router.New(application)
 
+	cfg := application.Config.Server
+
 	return &Server{
 		httpServer: &http.Server{
-			Addr:    ":" + application.Config.Server.Port,
+			Addr:    ":" + cfg.Port,
 			Handler: mux,
 
-			ReadTimeout:  10 * time.Second,
-			WriteTimeout: 30 * time.Second,
-			IdleTimeout:  60 * time.Second,
+			ReadTimeout:  cfg.ReadTimeout,
+			WriteTimeout: cfg.WriteTimeout,
+			IdleTimeout:  cfg.IdleTimeout,
 		},
 	}
 }

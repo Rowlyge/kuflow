@@ -34,7 +34,8 @@ func New(cfg *config.Config) (*App, error) {
 	}
 
 	infrastructure, err := NewInfrastructure(
-		cfg.Proxy.Upstreams,
+		cfg.Proxy,
+		cfg.Health,
 	)
 	if err != nil {
 		return nil, err

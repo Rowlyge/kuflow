@@ -4,27 +4,34 @@ import (
 	"net"
 	"net/http"
 	"time"
+
+	"github.com/Rowlyge/kuflow/internal/config"
 )
 
 // newTransport создаёт HTTP Transport,
-// который используется Reverse Proxy.
-func newTransport() *http.Transport {
+// используемый Reverse Proxy.
+func newTransport(
+	cfg config.ProxyConfig,
+) *http.Transport {
 
 	return &http.Transport{
 
 		DialContext: (&net.Dialer{
 
-			Timeout: 5 * time.Second,
+			Timeout: cfg.DialTimeout,
 
+			// Обычно KeepAlive редко меняют,
+			// поэтому пока оставляем константой.
 			KeepAlive: 30 * time.Second,
 		}).DialContext,
 
-		MaxIdleConns: 100,
-
+		// Это уже параметры производительности,
+		// а не конфигурации приложения.
+		MaxIdleConns:        100,
 		MaxIdleConnsPerHost: 20,
 
 		IdleConnTimeout: 90 * time.Second,
 
-		ResponseHeaderTimeout: 10 * time.Second,
+		ResponseHeaderTimeout: cfg.ResponseHeaderTimeout,
 	}
 }
