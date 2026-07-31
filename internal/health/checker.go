@@ -8,18 +8,18 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Rowlyge/kuflow/internal/config"
 	"github.com/Rowlyge/kuflow/internal/upstream"
 )
-
-const checkInterval = 5 * time.Second
 
 // Checker периодически проверяет доступность upstream-серверов.
 type Checker struct {
 	manager *upstream.Manager
 
-	// HTTP-клиент используется
-	// для проверки upstream-серверов.
 	client *http.Client
+
+	interval time.Duration
+	path     string
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -28,21 +28,31 @@ type Checker struct {
 // NewChecker создаёт Health Checker.
 func NewChecker(
 	manager *upstream.Manager,
+	cfg config.HealthConfig,
 ) *Checker {
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(
+		context.Background(),
+	)
 
 	return &Checker{
+
 		manager: manager,
-		ctx:     ctx,
-		cancel:  cancel,
+
+		ctx:    ctx,
+		cancel: cancel,
+
+		interval: cfg.Interval,
+		path:     cfg.Path,
 
 		client: &http.Client{
-			Timeout: 2 * time.Second,
+
+			Timeout: cfg.Timeout,
 
 			Transport: &http.Transport{
+
 				DialContext: (&net.Dialer{
-					Timeout: 2 * time.Second,
+					Timeout: cfg.Timeout,
 				}).DialContext,
 			},
 		},
@@ -54,7 +64,7 @@ func (c *Checker) Start() {
 
 	go func() {
 
-		ticker := time.NewTicker(checkInterval)
+		ticker := time.NewTicker(c.interval)
 		defer ticker.Stop()
 
 		// Выполняем первую проверку сразу после запуска.
@@ -92,7 +102,7 @@ func (c *Checker) Check(
 ) error {
 
 	resp, err := c.client.Get(
-		u.URL.String() + "/health",
+		u.URL.String() + c.path,
 	)
 
 	alive := err == nil &&

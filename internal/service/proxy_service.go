@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/Rowlyge/kuflow/internal/balancer"
+	"github.com/Rowlyge/kuflow/internal/config"
 	"github.com/Rowlyge/kuflow/internal/proxy"
 )
 
@@ -15,9 +16,13 @@ type ProxyService struct {
 // NewProxyService создаёт сервис прокси.
 func NewProxyService(
 	b balancer.Balancer,
+	cfg config.ProxyConfig,
 ) (*ProxyService, error) {
 
-	engine, err := proxy.NewEngine(b)
+	engine, err := proxy.NewEngine(
+		b,
+		cfg,
+	)
 	if err != nil {
 		return nil, err
 	}

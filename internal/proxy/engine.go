@@ -5,6 +5,7 @@ import (
 	"net/http/httputil"
 
 	"github.com/Rowlyge/kuflow/internal/balancer"
+	"github.com/Rowlyge/kuflow/internal/config"
 )
 
 // Engine управляет жизненным циклом Reverse Proxy.
@@ -20,6 +21,7 @@ type Engine struct {
 // NewEngine создаёт Proxy Engine.
 func NewEngine(
 	b balancer.Balancer,
+	cfg config.ProxyConfig,
 ) (*Engine, error) {
 
 	// Собираем Reverse Proxy вручную,
@@ -28,16 +30,17 @@ func NewEngine(
 
 		Director: newDirector(b),
 
-		Transport: newTransport(),
+		Transport: newTransport(cfg),
 
 		ModifyResponse: newModifyResponse(),
 
 		ErrorHandler: newErrorHandler(),
 
+		FlushInterval: cfg.FlushInterval,
+
 		// Позже здесь появятся:
 		//
 		// BufferPool
-		// FlushInterval
 		// Rewrite
 	}
 

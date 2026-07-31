@@ -21,13 +21,18 @@ func NewServices(
 ) (*Services, error) {
 
 	// Создаём балансировщик.
-	proxyBalancer := balancer.NewRoundRobin(
+	proxyBalancer, err := balancer.New(
+		cfg.Proxy.Balancer,
 		infrastructure.Upstreams,
 	)
+	if err != nil {
+		return nil, err
+	}
 
 	// Создаём сервис Reverse Proxy.
 	proxyService, err := service.NewProxyService(
 		proxyBalancer,
+		cfg.Proxy,
 	)
 	if err != nil {
 		return nil, err
