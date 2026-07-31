@@ -50,7 +50,10 @@ func New(cfg *config.Config) (*App, error) {
 		return nil, err
 	}
 
-	handlers, err := NewHandlers(services)
+	handlers, err := NewHandlers(
+		services,
+		infrastructure,
+	)
 	if err != nil {
 		return nil, err
 	}

@@ -3,6 +3,7 @@ package app
 import (
 	"github.com/Rowlyge/kuflow/internal/config"
 	"github.com/Rowlyge/kuflow/internal/health"
+	"github.com/Rowlyge/kuflow/internal/metrics"
 	"github.com/Rowlyge/kuflow/internal/upstream"
 )
 
@@ -14,6 +15,9 @@ type Infrastructure struct {
 
 	// Health Checker.
 	HealthChecker *health.Checker
+
+	// Collector хранит все runtime-метрики приложения.
+	Collector *metrics.Collector
 }
 
 // NewInfrastructure создаёт инфраструктуру приложения.
@@ -29,6 +33,8 @@ func NewInfrastructure(
 		return nil, err
 	}
 
+	collector := metrics.NewCollector()
+
 	return &Infrastructure{
 
 		Upstreams: manager,
@@ -37,5 +43,7 @@ func NewInfrastructure(
 			manager,
 			healthCfg,
 		),
+
+		Collector: collector,
 	}, nil
 }

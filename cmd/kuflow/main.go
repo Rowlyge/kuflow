@@ -12,9 +12,17 @@ import (
 	"github.com/Rowlyge/kuflow/internal/app"
 	"github.com/Rowlyge/kuflow/internal/config"
 	"github.com/Rowlyge/kuflow/internal/server"
+	"github.com/joho/godotenv"
 )
 
 func main() {
+
+	// Загружаем .env, если файл существует.
+	// Если его нет — продолжаем работу, используя
+	// переменные окружения системы.
+	if err := godotenv.Load(); err != nil {
+		log.Println(".env not found, using system environment")
+	}
 
 	cfg := config.Load()
 

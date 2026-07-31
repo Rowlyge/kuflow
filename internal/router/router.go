@@ -26,8 +26,7 @@ func New(app *app.App) *http.ServeMux {
 		),
 	)
 
-	// Все запросы /proxy/... пересылаются
-	// целевому серверу.
+	// Reverse Proxy.
 	mux.Handle(
 		"/proxy/",
 		middleware.Default(
@@ -37,6 +36,18 @@ func New(app *app.App) *http.ServeMux {
 			app.Middlewares.RequestID,
 			app.Middlewares.Telemetry,
 		),
+	)
+
+	// Runtime-метрики KuFlow (JSON).
+	mux.Handle(
+		"/metrics",
+		app.Handlers.Metrics,
+	)
+
+	// Runtime-метрики KuFlow (Prometheus).
+	mux.Handle(
+		"/metrics/prometheus",
+		app.Handlers.Prometheus,
 	)
 
 	return mux
