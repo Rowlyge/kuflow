@@ -8,11 +8,14 @@ import (
 	"github.com/Rowlyge/kuflow/internal/config"
 )
 
-// Engine управляет жизненным циклом Reverse Proxy.
+// Engine управляет жизненным циклом Proxy.
 type Engine struct {
 
 	// Алгоритм выбора upstream.
 	balancer balancer.Balancer
+
+	// Общий HTTP Transport.
+	transport http.RoundTripper
 
 	// Настроенный Reverse Proxy.
 	proxy *httputil.ReverseProxy
@@ -24,29 +27,26 @@ func NewEngine(
 	cfg config.ProxyConfig,
 ) (*Engine, error) {
 
-	// Собираем Reverse Proxy вручную,
-	// чтобы полностью контролировать его поведение.
+	transport := newTransport(cfg)
+
 	rp := &httputil.ReverseProxy{
 
 		Director: newDirector(b),
 
-		Transport: newTransport(cfg),
+		Transport: transport,
 
 		ModifyResponse: newModifyResponse(),
 
 		ErrorHandler: newErrorHandler(),
 
 		FlushInterval: cfg.FlushInterval,
-
-		// Позже здесь появятся:
-		//
-		// BufferPool
-		// Rewrite
 	}
 
 	return &Engine{
 
 		balancer: b,
+
+		transport: transport,
 
 		proxy: rp,
 	}, nil
@@ -57,5 +57,30 @@ func (e *Engine) ServeHTTP(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
-	e.proxy.ServeHTTP(w, r)
+
+	switch DetectMode(r) {
+
+	case ModeReverse:
+		e.proxy.ServeHTTP(w, r)
+
+	case ModeHTTPProxy:
+		e.serveForward(
+			w,
+			r,
+		)
+
+	case ModeCONNECT:
+		http.Error(
+			w,
+			"CONNECT Proxy is not implemented",
+			http.StatusNotImplemented,
+		)
+
+	default:
+		http.Error(
+			w,
+			"Unknown proxy mode",
+			http.StatusBadRequest,
+		)
+	}
 }
