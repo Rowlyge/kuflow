@@ -70,10 +70,9 @@ func (e *Engine) ServeHTTP(
 		)
 
 	case ModeCONNECT:
-		http.Error(
+		e.serveCONNECT(
 			w,
-			"CONNECT Proxy is not implemented",
-			http.StatusNotImplemented,
+			r,
 		)
 
 	default:
