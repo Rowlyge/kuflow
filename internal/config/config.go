@@ -12,6 +12,7 @@ type Config struct {
 	Health    HealthConfig
 	Telemetry TelemetryConfig
 	Database  DatabaseConfig
+	Auth      AuthConfig
 }
 
 // ==========================
@@ -97,6 +98,8 @@ func Load() *Config {
 		Telemetry: loadTelemetryConfig(),
 
 		Database: loadDatabaseConfig(),
+
+		Auth: loadAuthConfig(),
 	}
 }
 

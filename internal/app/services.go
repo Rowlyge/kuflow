@@ -4,6 +4,7 @@ import (
 	"github.com/Rowlyge/kuflow/internal/balancer"
 	"github.com/Rowlyge/kuflow/internal/config"
 	"github.com/Rowlyge/kuflow/internal/service"
+	authservice "github.com/Rowlyge/kuflow/internal/service/auth"
 )
 
 // Services объединяет бизнес-логику приложения.
@@ -11,6 +12,9 @@ type Services struct {
 	Health    *service.HealthService
 	Proxy     *service.ProxyService
 	Telemetry *service.TelemetryService
+
+	// Авторизация клиентов Proxy.
+	Auth *authservice.Service
 }
 
 // NewServices создаёт сервисы приложения.
@@ -38,6 +42,11 @@ func NewServices(
 		return nil, err
 	}
 
+	// Создаём сервис авторизации.
+	authService := authservice.New(
+		repositories.APIKey,
+	)
+
 	return &Services{
 
 		Health: service.NewHealthService(),
@@ -48,5 +57,7 @@ func NewServices(
 			repositories.Request,
 			infrastructure.Collector,
 		),
+
+		Auth: authService,
 	}, nil
 }
