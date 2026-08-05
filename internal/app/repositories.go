@@ -4,20 +4,20 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/Rowlyge/kuflow/internal/repository"
+	apikeyrepo "github.com/Rowlyge/kuflow/internal/repository/apikey"
 )
 
-// Repositories объединяет все репозитории приложения.
 type Repositories struct {
 	Request repository.RequestRepository
+	APIKey  apikeyrepo.Repository
 }
 
-// NewRepositories создаёт все репозитории приложения.
 func NewRepositories(
 	db *pgxpool.Pool,
 ) (*Repositories, error) {
 
 	return &Repositories{
-
 		Request: repository.NewPostgresRequestRepository(db),
+		APIKey:  apikeyrepo.New(db),
 	}, nil
 }

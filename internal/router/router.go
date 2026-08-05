@@ -12,7 +12,7 @@ func New(app *app.App) *http.ServeMux {
 
 	mux := http.NewServeMux()
 
-	// Проверка состояния сервиса.
+	// Health
 	mux.Handle(
 		"/health",
 		middleware.Default(
@@ -26,28 +26,29 @@ func New(app *app.App) *http.ServeMux {
 		),
 	)
 
-	// Reverse Proxy.
+	// Runtime JSON
 	mux.Handle(
-		"/proxy/",
+		"/metrics",
+		app.Handlers.Metrics,
+	)
+
+	// Prometheus
+	mux.Handle(
+		"/metrics/prometheus",
+		app.Handlers.Prometheus,
+	)
+
+	// Любой другой запрос считается Proxy-запросом.
+	mux.Handle(
+		"/",
 		middleware.Default(
 			app.Services.Proxy,
 
 			app.Middlewares.Logger,
 			app.Middlewares.RequestID,
 			app.Middlewares.Telemetry,
+			app.Middlewares.Auth,
 		),
-	)
-
-	// Runtime-метрики KuFlow (JSON).
-	mux.Handle(
-		"/metrics",
-		app.Handlers.Metrics,
-	)
-
-	// Runtime-метрики KuFlow (Prometheus).
-	mux.Handle(
-		"/metrics/prometheus",
-		app.Handlers.Prometheus,
 	)
 
 	return mux
