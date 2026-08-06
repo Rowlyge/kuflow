@@ -20,8 +20,8 @@ func New(app *app.App) *http.ServeMux {
 				app.Handlers.Health.GetStatus,
 			),
 
-			app.Middlewares.Logger,
 			app.Middlewares.RequestID,
+			app.Middlewares.Logger,
 			app.Middlewares.Telemetry,
 		),
 	)
@@ -44,10 +44,15 @@ func New(app *app.App) *http.ServeMux {
 		middleware.Default(
 			app.Services.Proxy,
 
-			app.Middlewares.Logger,
 			app.Middlewares.RequestID,
-			app.Middlewares.Telemetry,
+
+			app.Middlewares.Logger,
+
 			app.Middlewares.Auth,
+
+			app.Middlewares.RateLimit,
+
+			app.Middlewares.Telemetry,
 		),
 	)
 

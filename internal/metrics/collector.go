@@ -20,6 +20,8 @@ type Collector struct {
 	telemetrySaved  uint64
 	telemetryFailed uint64
 
+	rateLimited uint64
+
 	bytesInTotal  uint64
 	bytesOutTotal uint64
 
@@ -187,4 +189,21 @@ func (c *Collector) TelemetrySaved() uint64 {
 // TelemetryFailed возвращает количество ошибок сохранения телеметрии.
 func (c *Collector) TelemetryFailed() uint64 {
 	return atomic.LoadUint64(&c.telemetryFailed)
+}
+
+// IncRateLimited увеличивает количество запросов,
+// отклонённых Rate Limiter.
+func (c *Collector) IncRateLimited() {
+	atomic.AddUint64(
+		&c.rateLimited,
+		1,
+	)
+}
+
+// RateLimited возвращает количество
+// отклонённых запросов.
+func (c *Collector) RateLimited() uint64 {
+	return atomic.LoadUint64(
+		&c.rateLimited,
+	)
 }

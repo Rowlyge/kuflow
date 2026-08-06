@@ -9,6 +9,8 @@ type Middlewares struct {
 	Telemetry middleware.Middleware
 
 	Auth middleware.Middleware
+
+	RateLimit middleware.Middleware
 }
 
 // NewMiddlewares создаёт middleware приложения.
@@ -28,6 +30,11 @@ func NewMiddlewares(
 
 		Auth: middleware.NewAuth(
 			services.Auth,
+		),
+
+		RateLimit: middleware.NewRateLimit(
+			services.RateLimiter,
+			services.Telemetry,
 		),
 	}, nil
 }
