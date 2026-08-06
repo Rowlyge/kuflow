@@ -6,6 +6,7 @@ import (
 	authcache "github.com/Rowlyge/kuflow/internal/auth/cache"
 	"github.com/Rowlyge/kuflow/internal/balancer"
 	"github.com/Rowlyge/kuflow/internal/config"
+	"github.com/Rowlyge/kuflow/internal/ratelimit"
 	"github.com/Rowlyge/kuflow/internal/service"
 	authservice "github.com/Rowlyge/kuflow/internal/service/auth"
 )
@@ -17,9 +18,20 @@ type Services struct {
 
 	Auth *authservice.Service
 
+	// =========================
+	// Runtime API Key Cache
+	// =========================
+
 	AuthCache     *authcache.Cache
 	AuthLoader    *authcache.Loader
 	AuthRefresher *authcache.Refresher
+
+	// =========================
+	// Runtime Rate Limiter
+	// =========================
+
+	RateLimiter *ratelimit.Limiter
+	RateCleaner *ratelimit.Cleaner
 }
 
 func NewServices(
@@ -44,9 +56,9 @@ func NewServices(
 		return nil, err
 	}
 
-	// -------------------------
+	// =========================
 	// Runtime API Key Cache
-	// -------------------------
+	// =========================
 
 	cache := authcache.New()
 
@@ -62,6 +74,30 @@ func NewServices(
 
 	auth := authservice.New(
 		authservice.NewValidator(cache),
+	)
+
+	// =========================
+	// Runtime Rate Limiter
+	// =========================
+
+	limiter := ratelimit.New(
+		ratelimit.Config{
+
+			Capacity: 100,
+
+			RefillTokens: 100,
+
+			RefillInterval: time.Minute,
+		},
+	)
+
+	cleaner := ratelimit.NewCleaner(
+
+		limiter.Store(),
+
+		time.Minute,
+
+		10*time.Minute,
 	)
 
 	return &Services{
@@ -82,5 +118,9 @@ func NewServices(
 		AuthLoader: loader,
 
 		AuthRefresher: refresher,
+
+		RateLimiter: limiter,
+
+		RateCleaner: cleaner,
 	}, nil
 }

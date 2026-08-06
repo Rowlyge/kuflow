@@ -64,3 +64,10 @@ func (s *TelemetryService) Save(
 
 	return nil
 }
+
+// RecordRateLimit сохраняет runtime-метрику
+// превышения лимита запросов.
+func (s *TelemetryService) RecordRateLimit() {
+
+	s.collector.IncRateLimited()
+}

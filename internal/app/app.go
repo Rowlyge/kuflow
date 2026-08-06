@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"time"
 
 	"github.com/Rowlyge/kuflow/internal/config"
 	"github.com/Rowlyge/kuflow/internal/database"
@@ -65,12 +66,28 @@ func New(cfg *config.Config) (*App, error) {
 		return nil, err
 	}
 
+	// Общий контекст фоновых сервисов.
+	backgroundCtx := context.Background()
+
 	// Запускаем Health Checker.
 	infrastructure.HealthChecker.Start()
 
-	// Запускаем Runtime API Key Cache.
+	// Runtime API Key Cache.
 	services.AuthRefresher.Start(
 		context.Background(),
+	)
+
+	// Cleanup старых Bucket.
+	services.RateLimiter.Cleanup(
+		context.Background(),
+		5*time.Minute,
+		15*time.Minute,
+	)
+
+	// Запускаем автоматическую очистку
+	// Rate Limiter.
+	services.RateCleaner.Start(
+		backgroundCtx,
 	)
 
 	return &App{
