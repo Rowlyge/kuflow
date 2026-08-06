@@ -5,7 +5,7 @@ import (
 	"errors"
 	"strings"
 
-	apikeyrepo "github.com/Rowlyge/kuflow/internal/repository/apikey"
+	authcache "github.com/Rowlyge/kuflow/internal/auth/cache"
 )
 
 var (
@@ -14,15 +14,15 @@ var (
 )
 
 type Validator struct {
-	repository apikeyrepo.Repository
+	cache *authcache.Cache
 }
 
 func NewValidator(
-	repository apikeyrepo.Repository,
+	cache *authcache.Cache,
 ) *Validator {
 
 	return &Validator{
-		repository: repository,
+		cache: cache,
 	}
 }
 
@@ -31,18 +31,16 @@ func (v *Validator) Validate(
 	apiKey string,
 ) error {
 
+	_ = ctx
+
 	apiKey = strings.TrimSpace(apiKey)
 
 	if apiKey == "" {
 		return ErrMissingAPIKey
 	}
 
-	key, err := v.repository.FindByKey(
-		ctx,
-		apiKey,
-	)
-
-	if err != nil {
+	key, ok := v.cache.Get(apiKey)
+	if !ok {
 		return ErrInvalidAPIKey
 	}
 

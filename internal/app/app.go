@@ -1,6 +1,8 @@
 package app
 
 import (
+	"context"
+
 	"github.com/Rowlyge/kuflow/internal/config"
 	"github.com/Rowlyge/kuflow/internal/database"
 
@@ -65,6 +67,11 @@ func New(cfg *config.Config) (*App, error) {
 
 	// Запускаем Health Checker.
 	infrastructure.HealthChecker.Start()
+
+	// Запускаем Runtime API Key Cache.
+	services.AuthRefresher.Start(
+		context.Background(),
+	)
 
 	return &App{
 		Config:         cfg,
