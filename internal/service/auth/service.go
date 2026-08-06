@@ -1,23 +1,19 @@
 package auth
 
-import (
-	"context"
+import "context"
 
-	apikeyrepo "github.com/Rowlyge/kuflow/internal/repository/apikey"
-)
-
-// Service представляет сервис авторизации.
+// Service предоставляет сервис авторизации.
 type Service struct {
 	validator *Validator
 }
 
-// New создаёт AuthService.
+// New создаёт сервис авторизации.
 func New(
-	repository apikeyrepo.Repository,
+	validator *Validator,
 ) *Service {
 
 	return &Service{
-		validator: NewValidator(repository),
+		validator: validator,
 	}
 }
 

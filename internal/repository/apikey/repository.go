@@ -18,6 +18,11 @@ type Repository interface {
 		key string,
 	) (*APIKey, error)
 
+	// Возвращает все API-ключи.
+	List(
+		ctx context.Context,
+	) ([]APIKey, error)
+
 	Create(
 		ctx context.Context,
 		key *APIKey,
@@ -74,6 +79,51 @@ func (r *repository) FindByKey(
 	}
 
 	return &apiKey, nil
+}
+
+// List возвращает все API-ключи.
+func (r *repository) List(
+	ctx context.Context,
+) ([]APIKey, error) {
+
+	rows, err := r.db.Query(
+		ctx,
+		queryList,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	keys := make([]APIKey, 0)
+
+	for rows.Next() {
+
+		var key APIKey
+
+		err := rows.Scan(
+			&key.ID,
+			&key.APIKey,
+			&key.Owner,
+			&key.Enabled,
+			&key.CreatedAt,
+			&key.ExpiresAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		keys = append(
+			keys,
+			key,
+		)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return keys, nil
 }
 
 // Create создаёт новый ключ.

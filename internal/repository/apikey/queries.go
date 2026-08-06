@@ -2,6 +2,19 @@ package apikey
 
 const (
 
+	// Получение всех API-ключей.
+	queryList = `
+SELECT
+	id,
+	api_key,
+	owner,
+	enabled,
+	created_at,
+	expires_at
+FROM api_keys
+ORDER BY id;
+`
+
 	// Проверка существования ключа.
 	queryFindByKey = `
 SELECT
