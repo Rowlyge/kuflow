@@ -18,22 +18,36 @@ func newDirector(
 
 	return func(req *http.Request) {
 
-		// Получаем следующий upstream.
+		// Получаем следующий доступный upstream.
 		upstream, err := b.Next()
+
 		if err != nil {
-			// Пока просто ничего не делаем.
-			// В будущем здесь появится обработка ситуации,
-			// когда нет доступных upstream-серверов.
+
+			// Не удалось выбрать ни одного
+			// доступного upstream.
+			//
+			// ErrorHandler позже вернёт 503.
+			*req = *req.WithContext(
+				MarkUpstreamUnavailable(
+					req.Context(),
+				),
+			)
+
 			return
 		}
 
-		// Меняем адрес назначения.
-		req.URL.Scheme = upstream.URL.Scheme
-		req.URL.Host = upstream.URL.Host
+		// Сохраняем выбранный upstream
+		// в Context для telemetry и Circuit Breaker.
+		*req = *req.WithContext(
+			IntoContext(
+				req.Context(),
+				upstream,
+			),
+		)
 
-		// Host передаём целевому серверу.
 		originalHost := req.Host
 
+		// Меняем адрес назначения.
 		req.URL.Scheme = upstream.URL.Scheme
 		req.URL.Host = upstream.URL.Host
 		req.Host = upstream.URL.Host
@@ -43,14 +57,13 @@ func newDirector(
 			originalHost,
 		)
 
-		// Передаём оригинальную схему.
+		// Передаём схему запроса.
 		req.Header.Set(
 			"X-Forwarded-Proto",
 			req.URL.Scheme,
 		)
 
-		// Если запрос пришёл по HTTP,
-		// можно считать RemoteAddr клиентом.
+		// Передаём адрес клиента.
 		req.Header.Set(
 			"X-Forwarded-For",
 			req.RemoteAddr,

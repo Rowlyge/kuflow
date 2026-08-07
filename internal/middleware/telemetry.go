@@ -54,11 +54,9 @@ func (t *TelemetryMiddleware) Handler(
 			ResponseSize: rw.BytesWritten(),
 			ClientIP:     clientip.Get(r),
 			UserAgent:    r.UserAgent(),
-
-			Upstream: proxy.UpstreamFromContext(
+			Upstream: proxy.UpstreamNameFromContext(
 				r.Context(),
 			),
-
 			CreatedAt: start,
 		}
 

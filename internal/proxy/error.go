@@ -6,7 +6,7 @@ import (
 )
 
 // newErrorHandler вызывается,
-// если запрос к upstream завершился ошибкой.
+// если Reverse Proxy не смог обработать запрос.
 func newErrorHandler() func(
 	http.ResponseWriter,
 	*http.Request,
@@ -19,6 +19,23 @@ func newErrorHandler() func(
 		err error,
 	) {
 
+		// Балансировщик не смог выбрать
+		// ни одного доступного upstream.
+		if IsUpstreamUnavailable(
+			r.Context(),
+		) {
+
+			http.Error(
+				w,
+				"Service Unavailable",
+				http.StatusServiceUnavailable,
+			)
+
+			return
+		}
+
+		// Upstream был выбран, но произошла
+		// ошибка при обращении к нему.
 		log.Printf(
 			"Proxy error: %v",
 			err,

@@ -44,12 +44,12 @@ func (r *RoundRobin) Next() (*upstream.Upstream, error) {
 
 		server := upstreams[int(index-1)%len(upstreams)]
 
-		if server.Alive() {
+		if server.Available() {
 			return server, nil
 		}
 	}
 
-	return nil, fmt.Errorf("no healthy upstream available")
+	return nil, fmt.Errorf("no available upstream")
 }
 
 var _ Balancer = (*RoundRobin)(nil)
