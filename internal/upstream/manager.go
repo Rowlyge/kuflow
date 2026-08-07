@@ -3,6 +3,8 @@ package upstream
 import (
 	"fmt"
 	"net/url"
+
+	"github.com/Rowlyge/kuflow/internal/breaker"
 )
 
 // Manager хранит список доступных upstream-серверов.
@@ -27,11 +29,18 @@ func NewManager(
 		up := &Upstream{
 			Name: fmt.Sprintf("upstream-%d", i+1),
 			URL:  u,
+
+			Breaker: breaker.New(
+				breaker.DefaultConfig(),
+			),
 		}
 
 		up.SetAlive(true)
 
-		upstreams = append(upstreams, up)
+		upstreams = append(
+			upstreams,
+			up,
+		)
 	}
 
 	return &Manager{

@@ -20,6 +20,10 @@ func newModifyResponse() func(
 			"true",
 		)
 
+		if upstream := UpstreamFromContext(resp.Request.Context()); upstream != nil {
+			upstream.Breaker.OnSuccess()
+		}
+
 		return nil
 	}
 }

@@ -3,6 +3,8 @@ package upstream
 import (
 	"net/url"
 	"sync/atomic"
+
+	"github.com/Rowlyge/kuflow/internal/breaker"
 )
 
 // Upstream описывает один backend-сервер.
@@ -13,6 +15,9 @@ type Upstream struct {
 
 	// Адрес сервера.
 	URL *url.URL
+
+	// Circuit Breaker сервера.
+	Breaker *breaker.Breaker
 
 	// Признак доступности.
 	alive atomic.Bool
@@ -29,8 +34,6 @@ func (u *Upstream) SetAlive(value bool) {
 }
 
 // UpdateAlive обновляет состояние сервера.
-//
-// Возвращает true, если состояние изменилось.
 func (u *Upstream) UpdateAlive(value bool) bool {
 
 	old := u.alive.Load()
@@ -40,6 +43,21 @@ func (u *Upstream) UpdateAlive(value bool) bool {
 	}
 
 	u.alive.Store(value)
+
+	return true
+}
+
+// Available возвращает,
+// можно ли использовать upstream.
+func (u *Upstream) Available() bool {
+
+	if !u.Alive() {
+		return false
+	}
+
+	if u.Breaker != nil && !u.Breaker.Allow() {
+		return false
+	}
 
 	return true
 }

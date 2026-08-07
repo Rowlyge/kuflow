@@ -1,36 +1,79 @@
 package proxy
 
-import "context"
+import (
+	"context"
 
-type contextKey string
+	"github.com/Rowlyge/kuflow/internal/upstream"
+)
 
-const upstreamKey contextKey = "upstream"
+type upstreamKey struct{}
+type upstreamUnavailableKey struct{}
 
-func WithUpstream(
+// IntoContext сохраняет upstream в Context.
+func IntoContext(
 	ctx context.Context,
-	name string,
+	up *upstream.Upstream,
 ) context.Context {
 
 	return context.WithValue(
 		ctx,
-		upstreamKey,
-		name,
+		upstreamKey{},
+		up,
 	)
 }
 
+// UpstreamFromContext возвращает upstream.
 func UpstreamFromContext(
+	ctx context.Context,
+) *upstream.Upstream {
+
+	up, ok := ctx.Value(
+		upstreamKey{},
+	).(*upstream.Upstream)
+
+	if !ok {
+		return nil
+	}
+
+	return up
+}
+
+// UpstreamNameFromContext возвращает имя upstream.
+func UpstreamNameFromContext(
 	ctx context.Context,
 ) string {
 
-	value := ctx.Value(upstreamKey)
-	if value == nil {
-		return "unknown"
+	up := UpstreamFromContext(ctx)
+
+	if up == nil {
+		return ""
 	}
 
-	name, ok := value.(string)
-	if !ok {
-		return "unknown"
-	}
+	return up.Name
+}
 
-	return name
+// MarkUpstreamUnavailable помечает запрос,
+// для которого не удалось выбрать доступный upstream.
+func MarkUpstreamUnavailable(
+	ctx context.Context,
+) context.Context {
+
+	return context.WithValue(
+		ctx,
+		upstreamUnavailableKey{},
+		true,
+	)
+}
+
+// IsUpstreamUnavailable проверяет,
+// не удалось ли выбрать доступный upstream.
+func IsUpstreamUnavailable(
+	ctx context.Context,
+) bool {
+
+	value, ok := ctx.Value(
+		upstreamUnavailableKey{},
+	).(bool)
+
+	return ok && value
 }
