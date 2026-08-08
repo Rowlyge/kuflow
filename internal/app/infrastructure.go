@@ -33,17 +33,25 @@ func NewInfrastructure(
 		return nil, err
 	}
 
+	// Единый Collector для всех инфраструктурных компонентов.
 	collector := metrics.NewCollector()
+
+	// Health Checker использует тот же Collector,
+	// чтобы результаты active health checks попадали
+	// в общую систему runtime-метрик.
+	healthChecker := health.NewChecker(
+		manager,
+		healthCfg,
+		collector,
+	)
 
 	return &Infrastructure{
 
 		Upstreams: manager,
 
-		HealthChecker: health.NewChecker(
-			manager,
-			healthCfg,
-		),
+		HealthChecker: healthChecker,
 
 		Collector: collector,
 	}, nil
+
 }
