@@ -51,6 +51,17 @@ func (c *Collector) WritePrometheus(
 		s.HTTP.Failed,
 	)
 
+	fmt.Fprintf(w,
+		"# HELP kuflow_requests_rate_limited_total HTTP requests rejected by the rate limiter.\n",
+	)
+	fmt.Fprintf(w,
+		"# TYPE kuflow_requests_rate_limited_total counter\n",
+	)
+	fmt.Fprintf(w,
+		"kuflow_requests_rate_limited_total %d\n\n",
+		s.HTTP.RateLimited,
+	)
+
 	// ==========================
 	// Traffic
 	// ==========================
@@ -130,10 +141,93 @@ func (c *Collector) WritePrometheus(
 	)
 
 	// ==========================
+	// Health Checks
+	// ==========================
+
+	fmt.Fprintf(w,
+		"# HELP kuflow_health_checks_total Total active health checks.\n",
+	)
+	fmt.Fprintf(w,
+		"# TYPE kuflow_health_checks_total counter\n",
+	)
+	fmt.Fprintf(w,
+		"kuflow_health_checks_total %d\n\n",
+		s.Health.ChecksTotal,
+	)
+
+	fmt.Fprintf(w,
+		"# HELP kuflow_health_checks_success_total Successful active health checks.\n",
+	)
+	fmt.Fprintf(w,
+		"# TYPE kuflow_health_checks_success_total counter\n",
+	)
+	fmt.Fprintf(w,
+		"kuflow_health_checks_success_total %d\n\n",
+		s.Health.ChecksSuccess,
+	)
+
+	fmt.Fprintf(w,
+		"# HELP kuflow_health_checks_transport_failure_total Health checks failed at transport level.\n",
+	)
+	fmt.Fprintf(w,
+		"# TYPE kuflow_health_checks_transport_failure_total counter\n",
+	)
+	fmt.Fprintf(w,
+		"kuflow_health_checks_transport_failure_total %d\n\n",
+		s.Health.ChecksTransportFailed,
+	)
+
+	fmt.Fprintf(w,
+		"# HELP kuflow_health_checks_http_failure_total Health checks failed because upstream returned an unsuccessful HTTP status.\n",
+	)
+	fmt.Fprintf(w,
+		"# TYPE kuflow_health_checks_http_failure_total counter\n",
+	)
+	fmt.Fprintf(w,
+		"kuflow_health_checks_http_failure_total %d\n\n",
+		s.Health.ChecksHTTPFailed,
+	)
+
+	fmt.Fprintf(w,
+		"# HELP kuflow_health_state_changes_total Total upstream health state changes.\n",
+	)
+	fmt.Fprintf(w,
+		"# TYPE kuflow_health_state_changes_total counter\n",
+	)
+	fmt.Fprintf(w,
+		"kuflow_health_state_changes_total %d\n\n",
+		s.Health.StateChanges,
+	)
+
+	fmt.Fprintf(w,
+		"# HELP kuflow_health_upstreams_up Current number of healthy upstreams.\n",
+	)
+	fmt.Fprintf(w,
+		"# TYPE kuflow_health_upstreams_up gauge\n",
+	)
+	fmt.Fprintf(w,
+		"kuflow_health_upstreams_up %d\n\n",
+		s.Health.UpstreamsUp,
+	)
+
+	fmt.Fprintf(w,
+		"# HELP kuflow_health_upstreams_down Current number of unhealthy upstreams.\n",
+	)
+	fmt.Fprintf(w,
+		"# TYPE kuflow_health_upstreams_down gauge\n",
+	)
+	fmt.Fprintf(w,
+		"kuflow_health_upstreams_down %d\n\n",
+		s.Health.UpstreamsDown,
+	)
+
+	// ==========================
 	// Runtime
 	// ==========================
 
-	uptime := time.Since(c.StartedAt()).Seconds()
+	uptime := time.Since(
+		c.StartedAt(),
+	).Seconds()
 
 	fmt.Fprintf(w,
 		"# HELP kuflow_uptime_seconds Process uptime.\n",

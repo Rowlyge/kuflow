@@ -25,6 +25,14 @@ type Collector struct {
 	bytesInTotal  uint64
 	bytesOutTotal uint64
 
+	healthChecksTotal         uint64
+	healthChecksSuccess       uint64
+	healthChecksTransportFail uint64
+	healthChecksHTTPFail      uint64
+	healthStateChanges        uint64
+	healthUpstreamsUp         uint64
+	healthUpstreamsDown       uint64
+
 	durationTotal time.Duration
 	durationMax   time.Duration
 }
@@ -205,5 +213,82 @@ func (c *Collector) IncRateLimited() {
 func (c *Collector) RateLimited() uint64 {
 	return atomic.LoadUint64(
 		&c.rateLimited,
+	)
+}
+
+func (c *Collector) IncHealthChecks() {
+	atomic.AddUint64(&c.healthChecksTotal, 1)
+}
+
+func (c *Collector) IncHealthChecksSuccess() {
+	atomic.AddUint64(&c.healthChecksSuccess, 1)
+}
+
+func (c *Collector) IncHealthChecksTransportFailure() {
+	atomic.AddUint64(&c.healthChecksTransportFail, 1)
+}
+
+func (c *Collector) IncHealthChecksHTTPFailure() {
+	atomic.AddUint64(&c.healthChecksHTTPFail, 1)
+}
+
+func (c *Collector) IncHealthStateChanges() {
+	atomic.AddUint64(&c.healthStateChanges, 1)
+}
+
+func (c *Collector) SetHealthUpstreams(
+	up uint64,
+	down uint64,
+) {
+	atomic.StoreUint64(
+		&c.healthUpstreamsUp,
+		up,
+	)
+
+	atomic.StoreUint64(
+		&c.healthUpstreamsDown,
+		down,
+	)
+}
+
+func (c *Collector) HealthChecksTotal() uint64 {
+	return atomic.LoadUint64(
+		&c.healthChecksTotal,
+	)
+}
+
+func (c *Collector) HealthChecksSuccess() uint64 {
+	return atomic.LoadUint64(
+		&c.healthChecksSuccess,
+	)
+}
+
+func (c *Collector) HealthChecksTransportFailure() uint64 {
+	return atomic.LoadUint64(
+		&c.healthChecksTransportFail,
+	)
+}
+
+func (c *Collector) HealthChecksHTTPFailure() uint64 {
+	return atomic.LoadUint64(
+		&c.healthChecksHTTPFail,
+	)
+}
+
+func (c *Collector) HealthStateChanges() uint64 {
+	return atomic.LoadUint64(
+		&c.healthStateChanges,
+	)
+}
+
+func (c *Collector) HealthUpstreamsUp() uint64 {
+	return atomic.LoadUint64(
+		&c.healthUpstreamsUp,
+	)
+}
+
+func (c *Collector) HealthUpstreamsDown() uint64 {
+	return atomic.LoadUint64(
+		&c.healthUpstreamsDown,
 	)
 }
