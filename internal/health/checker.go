@@ -41,6 +41,9 @@ type Checker struct {
 	interval time.Duration
 	path     string
 
+	failureThreshold int
+	successThreshold int
+
 	ctx    context.Context
 	cancel context.CancelFunc
 }
@@ -74,10 +77,12 @@ func NewChecker(
 		interval: cfg.Interval,
 		path:     cfg.Path,
 
+		failureThreshold: cfg.FailureThreshold,
+		successThreshold: cfg.SuccessThreshold,
+
 		ctx:    ctx,
 		cancel: cancel,
 	}
-
 }
 
 // Start запускает периодическую проверку
@@ -103,7 +108,6 @@ func (c *Checker) Start() {
 			}
 		}
 	}()
-
 }
 
 // Stop останавливает Health Checker.
@@ -159,7 +163,6 @@ func (c *Checker) CheckAll() {
 			down,
 		)
 	}
-
 }
 
 // Check проверяет доступность одного
@@ -253,7 +256,6 @@ func (c *Checker) Check(
 	}
 
 	return nil
-
 }
 
 // handleSuccess обрабатывает успешную
@@ -262,22 +264,46 @@ func (c *Checker) handleSuccess(
 	u *upstream.Upstream,
 ) {
 
-	if u.UpdateAlive(true) {
+	// Успешная проверка сбрасывает счётчик
+	// последовательных ошибок.
+	u.ResetHealthFailures()
 
-		if c.collector != nil {
-			c.collector.IncHealthStateChanges()
+	// Если upstream уже UP, ничего менять не нужно.
+	if u.Alive() {
+		if u.Breaker != nil {
+			u.Breaker.OnSuccess()
 		}
 
-		log.Printf(
-			"HealthChecker: %s changed state -> UP",
-			u.Name,
-		)
+		return
+	}
+
+	// Upstream DOWN.
+	//
+	// Увеличиваем счётчик последовательных успешных
+	// проверок. Состояние меняем только после достижения
+	// successThreshold.
+	successes := u.IncHealthSuccesses()
+
+	if successes >= c.successThreshold {
+
+		if u.UpdateAlive(true) {
+
+			if c.collector != nil {
+				c.collector.IncHealthStateChanges()
+			}
+
+			log.Printf(
+				"HealthChecker: %s changed state -> UP",
+				u.Name,
+			)
+		}
+
+		u.ResetHealthSuccesses()
 	}
 
 	if u.Breaker != nil {
 		u.Breaker.OnSuccess()
 	}
-
 }
 
 // handleFailure обрабатывает неуспешную
@@ -286,20 +312,46 @@ func (c *Checker) handleFailure(
 	u *upstream.Upstream,
 ) {
 
-	if u.UpdateAlive(false) {
+	// Неуспешная проверка сбрасывает счётчик
+	// последовательных успешных проверок.
+	u.ResetHealthSuccesses()
 
-		if c.collector != nil {
-			c.collector.IncHealthStateChanges()
+	// Если upstream уже DOWN, продолжаем только
+	// накапливать failure counter.
+	if !u.Alive() {
+
+		if u.Breaker != nil {
+			u.Breaker.OnFailure()
 		}
 
-		log.Printf(
-			"HealthChecker: %s changed state -> DOWN",
-			u.Name,
-		)
+		return
+	}
+
+	// Upstream UP.
+	//
+	// Увеличиваем счётчик последовательных ошибок.
+	// Состояние меняем только после достижения
+	// failureThreshold.
+	failures := u.IncHealthFailures()
+
+	if failures >= c.failureThreshold {
+
+		if u.UpdateAlive(false) {
+
+			if c.collector != nil {
+				c.collector.IncHealthStateChanges()
+			}
+
+			log.Printf(
+				"HealthChecker: %s changed state -> DOWN",
+				u.Name,
+			)
+		}
+
+		u.ResetHealthFailures()
 	}
 
 	if u.Breaker != nil {
 		u.Breaker.OnFailure()
 	}
-
 }

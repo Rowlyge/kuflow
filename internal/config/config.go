@@ -1,6 +1,8 @@
 package config
 
 import (
+	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -56,6 +58,9 @@ type HealthConfig struct {
 	Timeout  time.Duration
 
 	Path string
+
+	FailureThreshold int
+	SuccessThreshold int
 }
 
 // ==========================
@@ -198,6 +203,16 @@ func loadHealthConfig() HealthConfig {
 			"HEALTH_PATH",
 			"/health",
 		),
+
+		FailureThreshold: mustInt(
+			"HEALTH_FAILURE_THRESHOLD",
+			3,
+		),
+
+		SuccessThreshold: mustInt(
+			"HEALTH_SUCCESS_THRESHOLD",
+			2,
+		),
 	}
 }
 
@@ -219,6 +234,27 @@ func loadTelemetryConfig() TelemetryConfig {
 			false,
 		),
 	}
+}
+
+func mustInt(
+	key string,
+	defaultValue int,
+) int {
+	value := getEnv(
+		key,
+		strconv.Itoa(defaultValue),
+	)
+
+	result, err := strconv.Atoi(value)
+	if err != nil {
+		panic(fmt.Sprintf(
+			"invalid integer value for %s: %q",
+			key,
+			value,
+		))
+	}
+
+	return result
 }
 
 // =====================================================
