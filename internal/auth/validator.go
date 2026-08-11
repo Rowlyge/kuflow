@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	authcache "github.com/Rowlyge/kuflow/internal/auth/cache"
 )
@@ -30,7 +31,6 @@ func (v *Validator) Validate(
 	ctx context.Context,
 	apiKey string,
 ) error {
-
 	_ = ctx
 
 	apiKey = strings.TrimSpace(apiKey)
@@ -45,6 +45,13 @@ func (v *Validator) Validate(
 	}
 
 	if !key.Enabled {
+		return ErrInvalidAPIKey
+	}
+
+	// Если срок действия задан и уже истёк,
+	// ключ считается недействительным.
+	if key.ExpiresAt != nil &&
+		!time.Now().Before(*key.ExpiresAt) {
 		return ErrInvalidAPIKey
 	}
 
