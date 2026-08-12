@@ -25,7 +25,6 @@ type App struct {
 
 // New создаёт приложение и инициализирует все зависимости.
 func New(cfg *config.Config) (*App, error) {
-
 	db, err := database.New(cfg.Database)
 	if err != nil {
 		return nil, err
@@ -61,7 +60,10 @@ func New(cfg *config.Config) (*App, error) {
 		return nil, err
 	}
 
-	middlewares, err := NewMiddlewares(services)
+	middlewares, err := NewMiddlewares(
+		services,
+		cfg,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +105,6 @@ func New(cfg *config.Config) (*App, error) {
 
 // Close освобождает все ресурсы приложения.
 func (a *App) Close() error {
-
 	if a.DB != nil {
 		a.DB.Close()
 	}

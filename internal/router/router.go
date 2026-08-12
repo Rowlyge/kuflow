@@ -9,7 +9,6 @@ import (
 
 // New создаёт маршруты приложения.
 func New(app *app.App) *http.ServeMux {
-
 	mux := http.NewServeMux()
 
 	// Health
@@ -49,6 +48,8 @@ func New(app *app.App) *http.ServeMux {
 			app.Middlewares.Logger,
 
 			app.Middlewares.Auth,
+
+			app.Middlewares.ConnectionLimit,
 
 			app.Middlewares.RateLimit,
 
