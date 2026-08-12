@@ -6,6 +6,7 @@ import (
 	authcache "github.com/Rowlyge/kuflow/internal/auth/cache"
 	"github.com/Rowlyge/kuflow/internal/balancer"
 	"github.com/Rowlyge/kuflow/internal/config"
+	"github.com/Rowlyge/kuflow/internal/connectionlimit"
 	"github.com/Rowlyge/kuflow/internal/ratelimit"
 	"github.com/Rowlyge/kuflow/internal/service"
 	authservice "github.com/Rowlyge/kuflow/internal/service/auth"
@@ -32,6 +33,12 @@ type Services struct {
 
 	RateLimiter *ratelimit.Limiter
 	RateCleaner *ratelimit.Cleaner
+
+	// =========================
+	// Runtime Connection Limiter
+	// =========================
+
+	ConnectionLimiter *connectionlimit.Limiter
 }
 
 func NewServices(
@@ -39,7 +46,6 @@ func NewServices(
 	repositories *Repositories,
 	infrastructure *Infrastructure,
 ) (*Services, error) {
-
 	proxyBalancer, err := balancer.New(
 		cfg.Proxy.Balancer,
 		infrastructure.Upstreams,
@@ -82,26 +88,25 @@ func NewServices(
 
 	limiter := ratelimit.New(
 		ratelimit.Config{
-
-			Capacity: 100,
-
-			RefillTokens: 100,
-
+			Capacity:       100,
+			RefillTokens:   100,
 			RefillInterval: time.Minute,
 		},
 	)
 
 	cleaner := ratelimit.NewCleaner(
-
 		limiter.Store(),
-
 		time.Minute,
-
 		10*time.Minute,
 	)
 
-	return &Services{
+	// =========================
+	// Runtime Connection Limiter
+	// =========================
 
+	connectionLimiter := connectionlimit.New(100)
+
+	return &Services{
 		Health: service.NewHealthService(),
 
 		Proxy: proxyService,
@@ -113,14 +118,13 @@ func NewServices(
 
 		Auth: auth,
 
-		AuthCache: cache,
-
-		AuthLoader: loader,
-
+		AuthCache:     cache,
+		AuthLoader:    loader,
 		AuthRefresher: refresher,
 
 		RateLimiter: limiter,
-
 		RateCleaner: cleaner,
+
+		ConnectionLimiter: connectionLimiter,
 	}, nil
 }
