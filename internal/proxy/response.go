@@ -20,9 +20,21 @@ func newModifyResponse() func(
 			"true",
 		)
 
-		if upstream := UpstreamFromContext(resp.Request.Context()); upstream != nil {
-			upstream.Breaker.OnSuccess()
+		upstream := UpstreamFromContext(
+			resp.Request.Context(),
+		)
+
+		if upstream == nil {
+			return nil
 		}
+
+		if resp.StatusCode >= http.StatusInternalServerError {
+			upstream.Breaker.OnFailure()
+
+			return nil
+		}
+
+		upstream.Breaker.OnSuccess()
 
 		return nil
 	}

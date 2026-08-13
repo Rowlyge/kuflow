@@ -30,8 +30,7 @@ func NewEngine(
 	transport := newTransport(cfg)
 
 	rp := &httputil.ReverseProxy{
-
-		Director: newDirector(b),
+		Rewrite: newDirector(b),
 
 		Transport: transport,
 
