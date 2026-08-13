@@ -1,10 +1,15 @@
 package proxy
 
 import (
+	"errors"
 	"net"
 	"net/http"
 
 	"github.com/Rowlyge/kuflow/internal/config"
+)
+
+var errUpstreamUnavailable = errors.New(
+	"no available upstream",
 )
 
 // newTransport создаёт HTTP Transport,
@@ -13,8 +18,7 @@ func newTransport(
 	cfg config.ProxyConfig,
 ) http.RoundTripper {
 
-	return &http.Transport{
-
+	base := &http.Transport{
 		Proxy: nil,
 
 		DialContext: (&net.Dialer{
@@ -25,4 +29,23 @@ func newTransport(
 
 		ForceAttemptHTTP2: true,
 	}
+
+	return &proxyTransport{
+		base: base,
+	}
+}
+
+type proxyTransport struct {
+	base http.RoundTripper
+}
+
+func (t *proxyTransport) RoundTrip(
+	req *http.Request,
+) (*http.Response, error) {
+
+	if IsUpstreamUnavailable(req.Context()) {
+		return nil, errUpstreamUnavailable
+	}
+
+	return t.base.RoundTrip(req)
 }

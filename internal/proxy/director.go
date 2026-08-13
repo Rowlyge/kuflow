@@ -1,70 +1,94 @@
 package proxy
 
 import (
-	"net/http"
+	"net/http/httputil"
 
 	"github.com/Rowlyge/kuflow/internal/balancer"
 )
 
-// newDirector создаёт Director для Reverse Proxy.
+// newDirector создаёт Rewrite для Reverse Proxy.
 //
-// Director вызывается перед каждым запросом.
-// Он выбирает upstream через балансировщик
-// и изменяет запрос так, чтобы он был отправлен
-// выбранному серверу.
+// Rewrite вызывается перед каждым запросом.
+// Он выбирает upstream через балансировщик,
+// проверяет Circuit Breaker и изменяет исходящий запрос
+// так, чтобы он был отправлен выбранному серверу.
+//
+// Если доступного upstream нет или его Circuit Breaker
+// запрещает запрос, запрос помечается как недоступный.
+// ReverseProxy передаст ошибку в ErrorHandler,
+// который вернёт клиенту HTTP 503.
 func newDirector(
 	b balancer.Balancer,
-) func(*http.Request) {
+) func(*httputil.ProxyRequest) {
 
-	return func(req *http.Request) {
+	return func(pr *httputil.ProxyRequest) {
 
-		// Получаем следующий доступный upstream.
+		req := pr.In
+
+		// Получаем следующий upstream через балансировщик.
 		upstream, err := b.Next()
 
-		if err != nil {
-
-			// Не удалось выбрать ни одного
-			// доступного upstream.
-			//
-			// ErrorHandler позже вернёт 503.
-			*req = *req.WithContext(
-				MarkUpstreamUnavailable(
-					req.Context(),
-				),
+		if err != nil || upstream == nil {
+			ctx := MarkUpstreamUnavailable(
+				req.Context(),
 			)
+
+			// Важно: помечаем именно исходящий запрос.
+			//
+			// ReverseProxy использует pr.Out для вызова
+			// Transport и передаёт его context в ErrorHandler.
+			pr.Out = pr.Out.WithContext(ctx)
 
 			return
 		}
 
-		// Сохраняем выбранный upstream
-		// в Context для telemetry и Circuit Breaker.
-		*req = *req.WithContext(
-			IntoContext(
+		// Проверяем Circuit Breaker выбранного upstream.
+		if upstream.Breaker == nil || !upstream.Breaker.Allow() {
+			ctx := MarkUpstreamUnavailable(
 				req.Context(),
-				upstream,
-			),
+			)
+
+			pr.Out = pr.Out.WithContext(ctx)
+
+			return
+		}
+
+		// Сохраняем выбранный upstream в Context.
+		//
+		// Context нужен:
+		// - ModifyResponse для OnSuccess/OnFailure;
+		// - ErrorHandler для transport failure;
+		// - telemetry;
+		// - Circuit Breaker.
+		ctx := IntoContext(
+			req.Context(),
+			upstream,
 		)
+
+		pr.Out = pr.Out.WithContext(ctx)
 
 		originalHost := req.Host
 
-		// Меняем адрес назначения.
-		req.URL.Scheme = upstream.URL.Scheme
-		req.URL.Host = upstream.URL.Host
-		req.Host = upstream.URL.Host
+		// Перенаправляем исходящий запрос на выбранный upstream.
+		pr.SetURL(upstream.URL)
 
-		req.Header.Set(
+		// Host исходящего запроса.
+		pr.Out.Host = upstream.URL.Host
+
+		// Передаём исходный Host клиента.
+		pr.Out.Header.Set(
 			"X-Forwarded-Host",
 			originalHost,
 		)
 
-		// Передаём схему запроса.
-		req.Header.Set(
+		// Передаём схему upstream.
+		pr.Out.Header.Set(
 			"X-Forwarded-Proto",
-			req.URL.Scheme,
+			upstream.URL.Scheme,
 		)
 
 		// Передаём адрес клиента.
-		req.Header.Set(
+		pr.Out.Header.Set(
 			"X-Forwarded-For",
 			req.RemoteAddr,
 		)

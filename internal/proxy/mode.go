@@ -13,9 +13,7 @@ const (
 
 // DetectMode определяет тип входящего запроса.
 func DetectMode(r *http.Request) Mode {
-
 	switch {
-
 	case r.Method == http.MethodConnect:
 		return ModeCONNECT
 
