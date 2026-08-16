@@ -31,18 +31,14 @@ func main() {
 		log.Fatal(err)
 	}
 
-	defer func() {
-		if err := application.Close(); err != nil {
-			log.Printf(
-				"Application shutdown failed: %v",
-				err,
-			)
-		}
-	}()
-
 	log.Println("Connected to PostgreSQL")
 
-	// Запускаем background workers приложения.
+	// Запускаем lifecycle background workers.
+	//
+	// App самостоятельно управляет:
+	// - Health Checker
+	// - Auth Cache Refresher
+	// - Rate Limiter Cleaner
 	application.Start()
 
 	httpServer := server.New(application)
@@ -65,11 +61,9 @@ func main() {
 			!errors.Is(err, http.ErrServerClosed) {
 
 			log.Printf(
-				"HTTP server failed: %v",
+				"HTTP server error: %v",
 				err,
 			)
-
-			stop()
 		}
 	}()
 
@@ -77,6 +71,8 @@ func main() {
 
 	log.Println("Shutdown signal received")
 
+	// Сначала останавливаем HTTP server,
+	// чтобы прекратить приём новых запросов.
 	shutdownCtx, cancel := context.WithTimeout(
 		context.Background(),
 		10*time.Second,
@@ -85,10 +81,18 @@ func main() {
 
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		log.Printf(
-			"HTTP server shutdown failed: %v",
+			"HTTP server shutdown error: %v",
 			err,
 		)
 	}
 
 	log.Println("HTTP server stopped")
+
+	// Затем App останавливает background workers,
+	// ждёт их завершения и закрывает DB pool.
+	if err := application.Close(); err != nil {
+		log.Fatal(err)
+	}
+
+	log.Println("Application stopped")
 }
