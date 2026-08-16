@@ -5,14 +5,15 @@ import (
 	"time"
 )
 
-// Cleaner периодически очищает
-// старые Bucket.
+// Cleaner периодически очищает старые Bucket.
 type Cleaner struct {
 	store *Store
 
 	interval time.Duration
 
 	maxIdle time.Duration
+
+	done chan struct{}
 }
 
 // NewCleaner создаёт Cleaner.
@@ -23,12 +24,13 @@ func NewCleaner(
 ) *Cleaner {
 
 	return &Cleaner{
-
 		store: store,
 
 		interval: interval,
 
 		maxIdle: maxIdle,
+
+		done: make(chan struct{}),
 	}
 }
 
@@ -37,16 +39,15 @@ func (c *Cleaner) Start(
 	ctx context.Context,
 ) {
 
-	ticker := time.NewTicker(
-		c.interval,
-	)
-
 	go func() {
+		defer close(c.done)
 
+		ticker := time.NewTicker(
+			c.interval,
+		)
 		defer ticker.Stop()
 
 		for {
-
 			select {
 
 			case <-ctx.Done():
@@ -60,4 +61,9 @@ func (c *Cleaner) Start(
 			}
 		}
 	}()
+}
+
+// Wait блокируется до завершения Cleaner.
+func (c *Cleaner) Wait() {
+	<-c.done
 }

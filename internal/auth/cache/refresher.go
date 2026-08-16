@@ -12,6 +12,8 @@ type Refresher struct {
 	loader *Loader
 
 	interval time.Duration
+
+	done chan struct{}
 }
 
 // NewRefresher создаёт Refresher.
@@ -27,6 +29,7 @@ func NewRefresher(
 	return &Refresher{
 		loader:   loader,
 		interval: interval,
+		done:     make(chan struct{}),
 	}
 }
 
@@ -54,6 +57,7 @@ func (r *Refresher) Start(
 ) {
 
 	go func() {
+		defer close(r.done)
 
 		// Первичная загрузка сразу после запуска.
 		if err := r.Reload(ctx); err != nil {
@@ -74,7 +78,6 @@ func (r *Refresher) Start(
 		defer ticker.Stop()
 
 		for {
-
 			select {
 
 			case <-ctx.Done():
@@ -103,4 +106,9 @@ func (r *Refresher) Start(
 			}
 		}
 	}()
+}
+
+// Wait блокируется до завершения Refresher.
+func (r *Refresher) Wait() {
+	<-r.done
 }

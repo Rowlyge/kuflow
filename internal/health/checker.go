@@ -44,8 +44,7 @@ type Checker struct {
 	failureThreshold int
 	successThreshold int
 
-	ctx    context.Context
-	cancel context.CancelFunc
+	done chan struct{}
 }
 
 // NewChecker создаёт Health Checker.
@@ -54,10 +53,6 @@ func NewChecker(
 	cfg config.HealthConfig,
 	collector *metrics.Collector,
 ) *Checker {
-
-	ctx, cancel := context.WithCancel(
-		context.Background(),
-	)
 
 	return &Checker{
 		manager: manager,
@@ -80,50 +75,51 @@ func NewChecker(
 		failureThreshold: cfg.FailureThreshold,
 		successThreshold: cfg.SuccessThreshold,
 
-		ctx:    ctx,
-		cancel: cancel,
+		done: make(chan struct{}),
 	}
 }
 
 // Start запускает периодическую проверку
 // upstream-серверов.
-func (c *Checker) Start() {
+//
+// Lifecycle context принадлежит App и передаётся сюда.
+func (c *Checker) Start(ctx context.Context) {
 
 	go func() {
+		defer close(c.done)
 
 		// Первая проверка выполняется сразу.
-		c.CheckAll()
+		c.CheckAll(ctx)
 
 		ticker := time.NewTicker(c.interval)
 		defer ticker.Stop()
 
 		for {
 			select {
-
 			case <-ticker.C:
-				c.CheckAll()
+				c.CheckAll(ctx)
 
-			case <-c.ctx.Done():
+			case <-ctx.Done():
 				return
 			}
 		}
 	}()
 }
 
-// Stop останавливает Health Checker.
-func (c *Checker) Stop() {
-	c.cancel()
+// Wait блокируется до завершения Health Checker.
+func (c *Checker) Wait() {
+	<-c.done
 }
 
 // CheckAll проверяет все upstream-серверы.
-func (c *Checker) CheckAll() {
+func (c *Checker) CheckAll(ctx context.Context) {
 
 	var up uint64
 	var down uint64
 
 	for _, server := range c.manager.Upstreams() {
 
-		if err := c.Check(server); err != nil {
+		if err := c.Check(ctx, server); err != nil {
 
 			switch {
 
@@ -165,9 +161,9 @@ func (c *Checker) CheckAll() {
 	}
 }
 
-// Check проверяет доступность одного
-// upstream-сервера.
+// Check проверяет доступность одного upstream-сервера.
 func (c *Checker) Check(
+	ctx context.Context,
 	u *upstream.Upstream,
 ) error {
 
@@ -195,7 +191,7 @@ func (c *Checker) Check(
 	)
 
 	req, err := http.NewRequestWithContext(
-		c.ctx,
+		ctx,
 		http.MethodGet,
 		target.String(),
 		nil,
@@ -264,11 +260,8 @@ func (c *Checker) handleSuccess(
 	u *upstream.Upstream,
 ) {
 
-	// Успешная проверка сбрасывает счётчик
-	// последовательных ошибок.
 	u.ResetHealthFailures()
 
-	// Если upstream уже UP, ничего менять не нужно.
 	if u.Alive() {
 		if u.Breaker != nil {
 			u.Breaker.OnSuccess()
@@ -277,11 +270,6 @@ func (c *Checker) handleSuccess(
 		return
 	}
 
-	// Upstream DOWN.
-	//
-	// Увеличиваем счётчик последовательных успешных
-	// проверок. Состояние меняем только после достижения
-	// successThreshold.
 	successes := u.IncHealthSuccesses()
 
 	if successes >= c.successThreshold {
@@ -312,12 +300,8 @@ func (c *Checker) handleFailure(
 	u *upstream.Upstream,
 ) {
 
-	// Неуспешная проверка сбрасывает счётчик
-	// последовательных успешных проверок.
 	u.ResetHealthSuccesses()
 
-	// Если upstream уже DOWN, продолжаем только
-	// накапливать failure counter.
 	if !u.Alive() {
 
 		if u.Breaker != nil {
@@ -327,11 +311,6 @@ func (c *Checker) handleFailure(
 		return
 	}
 
-	// Upstream UP.
-	//
-	// Увеличиваем счётчик последовательных ошибок.
-	// Состояние меняем только после достижения
-	// failureThreshold.
 	failures := u.IncHealthFailures()
 
 	if failures >= c.failureThreshold {
