@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"log"
+	"sync"
 	"time"
 )
 
@@ -13,7 +14,7 @@ type Refresher struct {
 
 	interval time.Duration
 
-	done chan struct{}
+	wg sync.WaitGroup
 }
 
 // NewRefresher создаёт Refresher.
@@ -29,7 +30,6 @@ func NewRefresher(
 	return &Refresher{
 		loader:   loader,
 		interval: interval,
-		done:     make(chan struct{}),
 	}
 }
 
@@ -51,16 +51,31 @@ func (r *Refresher) Reload(
 
 // Start запускает цикл обновления.
 //
-// Метод не блокирует вызывающий поток.
+// Start не блокирует вызывающий поток.
+//
+// Жизненным циклом контекста владеет вызывающий код,
+// в частности App. Refresher только наблюдает за ctx.Done().
 func (r *Refresher) Start(
 	ctx context.Context,
 ) {
 
+	r.wg.Add(1)
+
 	go func() {
-		defer close(r.done)
+		defer r.wg.Done()
 
 		// Первичная загрузка сразу после запуска.
 		if err := r.Reload(ctx); err != nil {
+
+			// Если приложение уже останавливается,
+			// это штатное завершение, а не ошибка refresh.
+			if ctx.Err() != nil {
+				log.Printf(
+					"[AuthCache] refresher stopped",
+				)
+
+				return
+			}
 
 			log.Printf(
 				"[AuthCache] initial load failed: %v",
@@ -78,6 +93,7 @@ func (r *Refresher) Start(
 		defer ticker.Stop()
 
 		for {
+
 			select {
 
 			case <-ctx.Done():
@@ -91,6 +107,16 @@ func (r *Refresher) Start(
 			case <-ticker.C:
 
 				if err := r.Reload(ctx); err != nil {
+
+					// После отмены контекста не продолжаем
+					// логировать refresh errors.
+					if ctx.Err() != nil {
+						log.Printf(
+							"[AuthCache] refresher stopped",
+						)
+
+						return
+					}
 
 					log.Printf(
 						"[AuthCache] refresh failed: %v",
@@ -108,7 +134,8 @@ func (r *Refresher) Start(
 	}()
 }
 
-// Wait блокируется до завершения Refresher.
+// Wait блокируется до завершения всех goroutine
+// Refresher.
 func (r *Refresher) Wait() {
-	<-r.done
+	r.wg.Wait()
 }

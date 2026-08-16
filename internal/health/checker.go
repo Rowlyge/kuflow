@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/Rowlyge/kuflow/internal/config"
@@ -44,7 +45,7 @@ type Checker struct {
 	failureThreshold int
 	successThreshold int
 
-	done chan struct{}
+	wg sync.WaitGroup
 }
 
 // NewChecker создаёт Health Checker.
@@ -74,19 +75,20 @@ func NewChecker(
 
 		failureThreshold: cfg.FailureThreshold,
 		successThreshold: cfg.SuccessThreshold,
-
-		done: make(chan struct{}),
 	}
 }
 
 // Start запускает периодическую проверку
 // upstream-серверов.
 //
-// Lifecycle context принадлежит App и передаётся сюда.
+// Lifecycle-контекст полностью принадлежит вызывающему
+// компоненту, то есть App.
 func (c *Checker) Start(ctx context.Context) {
 
+	c.wg.Add(1)
+
 	go func() {
-		defer close(c.done)
+		defer c.wg.Done()
 
 		// Первая проверка выполняется сразу.
 		c.CheckAll(ctx)
@@ -96,6 +98,7 @@ func (c *Checker) Start(ctx context.Context) {
 
 		for {
 			select {
+
 			case <-ticker.C:
 				c.CheckAll(ctx)
 
@@ -106,9 +109,9 @@ func (c *Checker) Start(ctx context.Context) {
 	}()
 }
 
-// Wait блокируется до завершения Health Checker.
+// Wait блокируется до завершения background worker.
 func (c *Checker) Wait() {
-	<-c.done
+	c.wg.Wait()
 }
 
 // CheckAll проверяет все upstream-серверы.
@@ -161,7 +164,8 @@ func (c *Checker) CheckAll(ctx context.Context) {
 	}
 }
 
-// Check проверяет доступность одного upstream-сервера.
+// Check проверяет доступность одного
+// upstream-сервера.
 func (c *Checker) Check(
 	ctx context.Context,
 	u *upstream.Upstream,
@@ -260,8 +264,11 @@ func (c *Checker) handleSuccess(
 	u *upstream.Upstream,
 ) {
 
+	// Успешная проверка сбрасывает счётчик
+	// последовательных ошибок.
 	u.ResetHealthFailures()
 
+	// Если upstream уже UP, ничего менять не нужно.
 	if u.Alive() {
 		if u.Breaker != nil {
 			u.Breaker.OnSuccess()
@@ -270,6 +277,11 @@ func (c *Checker) handleSuccess(
 		return
 	}
 
+	// Upstream DOWN.
+	//
+	// Увеличиваем счётчик последовательных успешных
+	// проверок. Состояние меняем только после достижения
+	// successThreshold.
 	successes := u.IncHealthSuccesses()
 
 	if successes >= c.successThreshold {
@@ -300,8 +312,12 @@ func (c *Checker) handleFailure(
 	u *upstream.Upstream,
 ) {
 
+	// Неуспешная проверка сбрасывает счётчик
+	// последовательных успешных проверок.
 	u.ResetHealthSuccesses()
 
+	// Если upstream уже DOWN, продолжаем только
+	// накапливать failure counter.
 	if !u.Alive() {
 
 		if u.Breaker != nil {
@@ -311,6 +327,11 @@ func (c *Checker) handleFailure(
 		return
 	}
 
+	// Upstream UP.
+	//
+	// Увеличиваем счётчик последовательных ошибок.
+	// Состояние меняем только после достижения
+	// failureThreshold.
 	failures := u.IncHealthFailures()
 
 	if failures >= c.failureThreshold {
