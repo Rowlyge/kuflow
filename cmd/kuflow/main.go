@@ -31,7 +31,19 @@ func main() {
 		log.Fatal(err)
 	}
 
+	defer func() {
+		if err := application.Close(); err != nil {
+			log.Printf(
+				"Application shutdown failed: %v",
+				err,
+			)
+		}
+	}()
+
 	log.Println("Connected to PostgreSQL")
+
+	// Запускаем background workers приложения.
+	application.Start()
 
 	httpServer := server.New(application)
 
@@ -52,7 +64,12 @@ func main() {
 		if err := httpServer.Start(); err != nil &&
 			!errors.Is(err, http.ErrServerClosed) {
 
-			log.Fatal(err)
+			log.Printf(
+				"HTTP server failed: %v",
+				err,
+			)
+
+			stop()
 		}
 	}()
 
@@ -67,15 +84,11 @@ func main() {
 	defer cancel()
 
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
-		log.Fatal(err)
+		log.Printf(
+			"HTTP server shutdown failed: %v",
+			err,
+		)
 	}
 
 	log.Println("HTTP server stopped")
-
-	if err := application.Close(); err != nil {
-		log.Fatal(err)
-	}
-
-	log.Println("Application stopped")
-
 }

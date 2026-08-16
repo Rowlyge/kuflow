@@ -2,7 +2,7 @@ package app
 
 import (
 	"context"
-	"time"
+	"sync"
 
 	"github.com/Rowlyge/kuflow/internal/config"
 	"github.com/Rowlyge/kuflow/internal/database"
@@ -21,9 +21,18 @@ type App struct {
 	Services       *Services
 	Handlers       *Handlers
 	Middlewares    *Middlewares
+
+	// Lifecycle фоновых workers.
+	lifecycleCtx    context.Context
+	lifecycleCancel context.CancelFunc
+	lifecycleOnce   sync.Once
+	lifecycleWG     sync.WaitGroup
 }
 
 // New создаёт приложение и инициализирует все зависимости.
+//
+// New не запускает background workers.
+// Их запуском управляет App.Start.
 func New(cfg *config.Config) (*App, error) {
 	db, err := database.New(cfg.Database)
 	if err != nil {
@@ -32,6 +41,8 @@ func New(cfg *config.Config) (*App, error) {
 
 	repositories, err := NewRepositories(db)
 	if err != nil {
+		db.Close()
+
 		return nil, err
 	}
 
@@ -40,6 +51,8 @@ func New(cfg *config.Config) (*App, error) {
 		cfg.Health,
 	)
 	if err != nil {
+		db.Close()
+
 		return nil, err
 	}
 
@@ -49,6 +62,8 @@ func New(cfg *config.Config) (*App, error) {
 		infrastructure,
 	)
 	if err != nil {
+		db.Close()
+
 		return nil, err
 	}
 
@@ -57,6 +72,8 @@ func New(cfg *config.Config) (*App, error) {
 		infrastructure,
 	)
 	if err != nil {
+		db.Close()
+
 		return nil, err
 	}
 
@@ -65,46 +82,89 @@ func New(cfg *config.Config) (*App, error) {
 		cfg,
 	)
 	if err != nil {
+		db.Close()
+
 		return nil, err
 	}
 
-	// Общий контекст фоновых сервисов.
-	backgroundCtx := context.Background()
-
-	// Запускаем Health Checker.
-	infrastructure.HealthChecker.Start()
-
-	// Runtime API Key Cache.
-	services.AuthRefresher.Start(
+	ctx, cancel := context.WithCancel(
 		context.Background(),
-	)
-
-	// Cleanup старых Bucket.
-	services.RateLimiter.Cleanup(
-		context.Background(),
-		5*time.Minute,
-		15*time.Minute,
-	)
-
-	// Запускаем автоматическую очистку
-	// Rate Limiter.
-	services.RateCleaner.Start(
-		backgroundCtx,
 	)
 
 	return &App{
-		Config:         cfg,
-		DB:             db,
+		Config: cfg,
+
+		DB: db,
+
 		Repositories:   repositories,
 		Infrastructure: infrastructure,
 		Services:       services,
 		Handlers:       handlers,
 		Middlewares:    middlewares,
+
+		lifecycleCtx:    ctx,
+		lifecycleCancel: cancel,
 	}, nil
 }
 
-// Close освобождает все ресурсы приложения.
+// Start запускает все background workers приложения.
+//
+// Start безопасно вызывается только один раз.
+func (a *App) Start() {
+	a.lifecycleOnce.Do(func() {
+
+		a.lifecycleWG.Add(3)
+
+		// Health Checker.
+		go func() {
+			defer a.lifecycleWG.Done()
+
+			a.Infrastructure.HealthChecker.Start(
+				a.lifecycleCtx,
+			)
+
+			a.Infrastructure.HealthChecker.Wait()
+		}()
+
+		// Runtime API Key Cache.
+		go func() {
+			defer a.lifecycleWG.Done()
+
+			a.Services.AuthRefresher.Start(
+				a.lifecycleCtx,
+			)
+
+			a.Services.AuthRefresher.Wait()
+		}()
+
+		// Runtime Rate Limiter cleanup.
+		go func() {
+			defer a.lifecycleWG.Done()
+
+			a.Services.RateCleaner.Start(
+				a.lifecycleCtx,
+			)
+
+			a.Services.RateCleaner.Wait()
+		}()
+	})
+}
+
+// Close корректно завершает работу приложения.
+//
+// Сначала останавливаются background workers,
+// затем закрывается database connection pool.
 func (a *App) Close() error {
+	if a == nil {
+		return nil
+	}
+
+	if a.lifecycleCancel != nil {
+		a.lifecycleCancel()
+	}
+
+	a.lifecycleWG.Wait()
+
 	if a.DB != nil {
 		a.DB.Close()
 	}
