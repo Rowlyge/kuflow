@@ -2,18 +2,19 @@ package ratelimit
 
 import (
 	"context"
+	"sync"
 	"time"
 )
 
-// Cleaner периодически очищает старые Bucket.
+// Cleaner периодически очищает
+// старые Bucket.
 type Cleaner struct {
 	store *Store
 
 	interval time.Duration
+	maxIdle  time.Duration
 
-	maxIdle time.Duration
-
-	done chan struct{}
+	wg sync.WaitGroup
 }
 
 // NewCleaner создаёт Cleaner.
@@ -27,20 +28,24 @@ func NewCleaner(
 		store: store,
 
 		interval: interval,
-
-		maxIdle: maxIdle,
-
-		done: make(chan struct{}),
+		maxIdle:  maxIdle,
 	}
 }
 
-// Start запускает очистку.
+// Start запускает периодическую очистку.
+//
+// Start не блокирует вызывающий поток.
+//
+// Жизненным циклом контекста владеет вызывающий код,
+// в частности App. Cleaner только наблюдает за ctx.Done().
 func (c *Cleaner) Start(
 	ctx context.Context,
 ) {
 
+	c.wg.Add(1)
+
 	go func() {
-		defer close(c.done)
+		defer c.wg.Done()
 
 		ticker := time.NewTicker(
 			c.interval,
@@ -48,6 +53,7 @@ func (c *Cleaner) Start(
 		defer ticker.Stop()
 
 		for {
+
 			select {
 
 			case <-ctx.Done():
@@ -63,7 +69,8 @@ func (c *Cleaner) Start(
 	}()
 }
 
-// Wait блокируется до завершения Cleaner.
+// Wait блокируется до завершения
+// goroutine Cleaner.
 func (c *Cleaner) Wait() {
-	<-c.done
+	c.wg.Wait()
 }
