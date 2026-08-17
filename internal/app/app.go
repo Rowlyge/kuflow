@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -146,22 +147,54 @@ func (a *App) Start() {
 
 // Close корректно завершает работу приложения.
 //
-// Сначала останавливаются background workers,
-// затем закрывается database connection pool.
-func (a *App) Close() error {
+// Сначала отменяется lifecycle context,
+// затем App ожидает завершения всех background workers.
+// Если workers не завершились до истечения ctx,
+// возвращается ошибка и database pool не закрывается.
+//
+// Database pool закрывается только после успешного
+// завершения всех background workers.
+func (a *App) Close(
+	ctx context.Context,
+) error {
+
 	if a == nil {
 		return nil
+	}
+
+	if ctx == nil {
+		return fmt.Errorf(
+			"application shutdown context is nil",
+		)
 	}
 
 	if a.lifecycleCancel != nil {
 		a.lifecycleCancel()
 	}
 
-	a.lifecycleWG.Wait()
+	workersDone := make(chan struct{})
 
-	if a.DB != nil {
-		a.DB.Close()
+	go func() {
+		a.lifecycleWG.Wait()
+
+		close(workersDone)
+	}()
+
+	select {
+
+	case <-workersDone:
+
+		if a.DB != nil {
+			a.DB.Close()
+		}
+
+		return nil
+
+	case <-ctx.Done():
+
+		return fmt.Errorf(
+			"application shutdown timeout: %w",
+			ctx.Err(),
+		)
 	}
-
-	return nil
 }

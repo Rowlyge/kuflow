@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -13,16 +14,20 @@ type testLifecycleWorker struct {
 	started int
 	waited  int
 
-	startedCh chan struct{}
-	stoppedCh chan struct{}
+	startedCh     chan struct{}
+	waitStartedCh chan struct{}
+	stoppedCh     chan struct{}
 
-	once sync.Once
+	startedOnce     sync.Once
+	waitStartedOnce sync.Once
+	stoppedOnce     sync.Once
 }
 
 func newTestLifecycleWorker() *testLifecycleWorker {
 	return &testLifecycleWorker{
-		startedCh: make(chan struct{}),
-		stoppedCh: make(chan struct{}),
+		startedCh:     make(chan struct{}),
+		waitStartedCh: make(chan struct{}),
+		stoppedCh:     make(chan struct{}),
 	}
 }
 
@@ -31,22 +36,37 @@ func (w *testLifecycleWorker) Start(ctx context.Context) {
 
 	w.started++
 
-	w.once.Do(func() {
+	w.startedOnce.Do(func() {
 		close(w.startedCh)
 	})
 
 	w.mu.Unlock()
 
+	// Worker exits its Start phase after lifecycle cancellation.
 	<-ctx.Done()
 
 	w.mu.Lock()
 	w.waited++
-	close(w.stoppedCh)
 	w.mu.Unlock()
 }
 
 func (w *testLifecycleWorker) Wait() {
+	w.waitStartedOnce.Do(func() {
+		close(w.waitStartedCh)
+	})
+
+	// Wait intentionally blocks until Stop() is called.
+	//
+	// This allows tests to distinguish:
+	// - worker has stopped its Start phase;
+	// - worker lifecycle is fully finished.
 	<-w.stoppedCh
+}
+
+func (w *testLifecycleWorker) Stop() {
+	w.stoppedOnce.Do(func() {
+		close(w.stoppedCh)
+	})
 }
 
 func (w *testLifecycleWorker) Started() int {
@@ -86,7 +106,8 @@ func TestApp_StartStartsAllWorkers(t *testing.T) {
 	)
 
 	app := &App{
-		lifecycleCtx: ctx,
+		lifecycleCtx:    ctx,
+		lifecycleCancel: cancel,
 
 		lifecycleWorkers: []lifecycleWorker{
 			worker1,
@@ -115,6 +136,12 @@ func TestApp_StartStartsAllWorkers(t *testing.T) {
 
 	cancel()
 
+	// Start() has returned for all workers, but Wait() is still blocked.
+	// Release Wait() explicitly so the test can finish.
+	worker1.Stop()
+	worker2.Stop()
+	worker3.Stop()
+
 	app.lifecycleWG.Wait()
 
 	if got := worker1.Waited(); got != 1 {
@@ -139,7 +166,8 @@ func TestApp_StartIsIdempotent(t *testing.T) {
 	defer cancel()
 
 	app := &App{
-		lifecycleCtx: ctx,
+		lifecycleCtx:    ctx,
+		lifecycleCancel: cancel,
 
 		lifecycleWorkers: []lifecycleWorker{
 			worker,
@@ -160,6 +188,9 @@ func TestApp_StartIsIdempotent(t *testing.T) {
 	}
 
 	cancel()
+
+	// Release Wait().
+	worker.Stop()
 
 	app.lifecycleWG.Wait()
 
@@ -194,15 +225,29 @@ func TestApp_CloseStopsWorkers(t *testing.T) {
 	waitFor(t, worker1.startedCh)
 	waitFor(t, worker2.startedCh)
 
-	done := make(chan struct{})
+	// Release Wait() after Close cancels the lifecycle.
+	go func() {
+		waitFor(t, worker1.waitStartedCh)
+		worker1.Stop()
+	}()
 
 	go func() {
-		_ = app.Close()
-		close(done)
+		waitFor(t, worker2.waitStartedCh)
+		worker2.Stop()
+	}()
+
+	done := make(chan error, 1)
+
+	go func() {
+		done <- app.Close(context.Background())
 	}()
 
 	select {
-	case <-done:
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("App.Close() returned error: %v", err)
+		}
+
 	case <-time.After(time.Second):
 		t.Fatal("App.Close() did not return")
 	}
@@ -236,11 +281,17 @@ func TestApp_CloseIsIdempotent(t *testing.T) {
 
 	waitFor(t, worker.startedCh)
 
-	if err := app.Close(); err != nil {
+	// Release Wait() when it starts.
+	go func() {
+		waitFor(t, worker.waitStartedCh)
+		worker.Stop()
+	}()
+
+	if err := app.Close(context.Background()); err != nil {
 		t.Fatalf("first Close() failed: %v", err)
 	}
 
-	if err := app.Close(); err != nil {
+	if err := app.Close(context.Background()); err != nil {
 		t.Fatalf("second Close() failed: %v", err)
 	}
 
@@ -250,5 +301,138 @@ func TestApp_CloseIsIdempotent(t *testing.T) {
 
 	if got := worker.Waited(); got != 1 {
 		t.Fatalf("worker waited %d times, want 1", got)
+	}
+}
+
+func TestApp_CloseRespectsContextTimeout(t *testing.T) {
+	worker := newTestLifecycleWorker()
+
+	ctx, cancel := context.WithCancel(
+		context.Background(),
+	)
+
+	app := &App{
+		lifecycleCtx:    ctx,
+		lifecycleCancel: cancel,
+
+		lifecycleWorkers: []lifecycleWorker{
+			worker,
+		},
+	}
+
+	app.Start()
+
+	waitFor(t, worker.startedCh)
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(
+		context.Background(),
+		50*time.Millisecond,
+	)
+	defer shutdownCancel()
+
+	start := time.Now()
+
+	err := app.Close(shutdownCtx)
+
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("App.Close() returned nil, want timeout error")
+	}
+
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf(
+			"App.Close() returned error %v, want context deadline exceeded",
+			err,
+		)
+	}
+
+	if elapsed < 40*time.Millisecond {
+		t.Fatalf(
+			"App.Close() returned too early: %v",
+			elapsed,
+		)
+	}
+
+	if got := worker.Waited(); got != 1 {
+		t.Fatalf(
+			"worker Start() completed %d times, want 1",
+			got,
+		)
+	}
+
+	// Intentionally leave Wait() blocked.
+	// This proves that Close() returned because of its
+	// shutdown context deadline.
+}
+
+func TestApp_CloseWaitsForWorkersWhenTheyStop(t *testing.T) {
+	worker := newTestLifecycleWorker()
+
+	ctx, cancel := context.WithCancel(
+		context.Background(),
+	)
+
+	app := &App{
+		lifecycleCtx:    ctx,
+		lifecycleCancel: cancel,
+
+		lifecycleWorkers: []lifecycleWorker{
+			worker,
+		},
+	}
+
+	app.Start()
+
+	waitFor(t, worker.startedCh)
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(
+		context.Background(),
+		time.Second,
+	)
+	defer shutdownCancel()
+
+	done := make(chan error, 1)
+
+	go func() {
+		done <- app.Close(shutdownCtx)
+	}()
+
+	// Close() отменяет lifecycle context.
+	// После этого Start() завершается и worker входит в Wait().
+	waitFor(t, worker.waitStartedCh)
+
+	// Пока Wait() заблокирован, Close() не должен вернуться.
+	select {
+	case err := <-done:
+		t.Fatalf(
+			"App.Close() returned before worker stopped: %v",
+			err,
+		)
+
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	// Теперь разрешаем worker завершить Wait().
+	worker.Stop()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf(
+				"App.Close() returned error: %v",
+				err,
+			)
+		}
+
+	case <-time.After(time.Second):
+		t.Fatal("App.Close() did not wait for worker to stop")
+	}
+
+	if got := worker.Waited(); got != 1 {
+		t.Fatalf(
+			"worker Start() completed %d times, want 1",
+			got,
+		)
 	}
 }
