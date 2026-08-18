@@ -15,6 +15,71 @@ import (
 	"github.com/joho/godotenv"
 )
 
+const shutdownTimeout = 10 * time.Second
+
+type serverLifecycle interface {
+	Shutdown(context.Context) error
+}
+
+type appLifecycle interface {
+	Close(context.Context) error
+}
+
+// shutdown выполняет общий lifecycle shutdown приложения.
+//
+// HTTP server останавливается первым, чтобы прекратить приём новых
+// запросов. После этого завершается App вместе с background workers
+// и остальными ресурсами приложения.
+//
+// Для server и App используются независимые shutdown contexts.
+func shutdown(
+	httpServer serverLifecycle,
+	application appLifecycle,
+) error {
+
+	httpShutdownCtx, httpShutdownCancel := context.WithTimeout(
+		context.Background(),
+		shutdownTimeout,
+	)
+	defer httpShutdownCancel()
+
+	var shutdownErr error
+
+	if err := httpServer.Shutdown(httpShutdownCtx); err != nil {
+		shutdownErr = err
+
+		log.Printf(
+			"HTTP server shutdown error: %v",
+			err,
+		)
+	}
+
+	log.Println("HTTP server stopped")
+
+	appShutdownCtx, appShutdownCancel := context.WithTimeout(
+		context.Background(),
+		shutdownTimeout,
+	)
+	defer appShutdownCancel()
+
+	if err := application.Close(appShutdownCtx); err != nil {
+		log.Printf(
+			"Application shutdown error: %v",
+			err,
+		)
+
+		if shutdownErr != nil {
+			return errors.Join(shutdownErr, err)
+		}
+
+		return err
+	}
+
+	log.Println("Application stopped")
+
+	return shutdownErr
+}
+
 func main() {
 
 	// Загружаем .env, если файл существует.
@@ -71,28 +136,15 @@ func main() {
 
 	log.Println("Shutdown signal received")
 
-	// Сначала останавливаем HTTP server,
-	// чтобы прекратить приём новых запросов.
-	shutdownCtx, cancel := context.WithTimeout(
-		context.Background(),
-		10*time.Second,
-	)
-	defer cancel()
-
-	if err := httpServer.Shutdown(shutdownCtx); err != nil {
+	if err := shutdown(
+		httpServer,
+		application,
+	); err != nil {
 		log.Printf(
-			"HTTP server shutdown error: %v",
+			"Shutdown completed with error: %v",
 			err,
 		)
+
+		return
 	}
-
-	log.Println("HTTP server stopped")
-
-	// Затем App останавливает background workers,
-	// ждёт их завершения и закрывает DB pool.
-	if err := application.Close(); err != nil {
-		log.Fatal(err)
-	}
-
-	log.Println("Application stopped")
 }
