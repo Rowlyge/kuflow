@@ -32,14 +32,17 @@ type appLifecycle interface {
 // и остальными ресурсами приложения.
 //
 // Для server и App используются независимые shutdown contexts.
+// Каждый этап имеет собственный timeout.
 func shutdown(
 	httpServer serverLifecycle,
 	application appLifecycle,
+	serverShutdownTimeout time.Duration,
+	appShutdownTimeout time.Duration,
 ) error {
 
 	httpShutdownCtx, httpShutdownCancel := context.WithTimeout(
 		context.Background(),
-		shutdownTimeout,
+		serverShutdownTimeout,
 	)
 	defer httpShutdownCancel()
 
@@ -58,7 +61,7 @@ func shutdown(
 
 	appShutdownCtx, appShutdownCancel := context.WithTimeout(
 		context.Background(),
-		shutdownTimeout,
+		appShutdownTimeout,
 	)
 	defer appShutdownCancel()
 
@@ -139,7 +142,10 @@ func main() {
 	if err := shutdown(
 		httpServer,
 		application,
+		shutdownTimeout,
+		shutdownTimeout,
 	); err != nil {
+
 		log.Printf(
 			"Shutdown completed with error: %v",
 			err,
