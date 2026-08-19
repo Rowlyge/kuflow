@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/Rowlyge/kuflow/internal/app"
-	"github.com/Rowlyge/kuflow/internal/auth/cache"
+	authcache "github.com/Rowlyge/kuflow/internal/auth/cache"
 	"github.com/Rowlyge/kuflow/internal/balancer"
 	"github.com/Rowlyge/kuflow/internal/config"
 	"github.com/Rowlyge/kuflow/internal/connectionlimit"
@@ -23,22 +23,18 @@ import (
 )
 
 // Environment contains the reusable HTTP integration-test environment.
-//
-// It intentionally does not create a PostgreSQL connection. Integration tests
-// use an in-memory request repository and httptest upstreams instead.
 type Environment struct {
 	server *httptest.Server
 	client *http.Client
+
+	authCache *authcache.Cache
 }
 
 // NewEnvironment creates a real KuFlow HTTP pipeline.
-//
-// With no upstream targets it exposes the normal health/metrics routes used
-// by infrastructure smoke tests. When at least one upstream target is passed,
-// the proxy route is also wired to a real ProxyService and production
-// middleware. Authentication is intentionally omitted from that route until
-// integration stage 6.2, where API-key handling becomes the subject under test.
-func NewEnvironment(upstreamTargets ...string) (*Environment, error) {
+func NewEnvironment(
+	upstreamTargets ...string,
+) (*Environment, error) {
+
 	cfg := &config.Config{}
 
 	collector := metrics.NewCollector()
@@ -49,7 +45,7 @@ func NewEnvironment(upstreamTargets ...string) (*Environment, error) {
 		collector,
 	)
 
-	cache := cache.New()
+	authCache := authcache.New()
 
 	services := &app.Services{
 		Health: service.NewHealthService(),
@@ -57,7 +53,7 @@ func NewEnvironment(upstreamTargets ...string) (*Environment, error) {
 		Telemetry: telemetry,
 
 		Auth: authservice.New(
-			authservice.NewValidator(cache),
+			authservice.NewValidator(authCache),
 		),
 
 		RateLimiter: ratelimit.New(
@@ -145,14 +141,14 @@ func NewEnvironment(upstreamTargets ...string) (*Environment, error) {
 			),
 		)
 
-		// Keep the production proxy middleware order, except Auth.
-		// Authentication becomes part of the dedicated 6.2 integration stage.
+		// Production proxy middleware order.
 		mux.Handle(
 			"/",
 			middleware.Default(
 				application.Services.Proxy,
 				application.Middlewares.RequestID,
 				application.Middlewares.Logger,
+				application.Middlewares.Auth,
 				application.Middlewares.ConnectionLimit,
 				application.Middlewares.RateLimit,
 				application.Middlewares.Telemetry,
@@ -165,8 +161,9 @@ func NewEnvironment(upstreamTargets ...string) (*Environment, error) {
 	server := httptest.NewServer(handler)
 
 	return &Environment{
-		server: server,
-		client: server.Client(),
+		server:    server,
+		client:    server.Client(),
+		authCache: authCache,
 	}, nil
 }
 
@@ -180,7 +177,20 @@ func (e *Environment) Client() *http.Client {
 	return e.client
 }
 
-// Close shuts down the test HTTP server and releases its client resources.
+// SetAPIKeys replaces the runtime authentication cache.
+func (e *Environment) SetAPIKeys(
+	keys ...authcache.APIKey,
+) {
+	data := make(map[string]authcache.APIKey, len(keys))
+
+	for _, key := range keys {
+		data[key.Key] = key
+	}
+
+	e.authCache.Replace(data)
+}
+
+// Close shuts down the test HTTP server.
 func (e *Environment) Close() {
 	if e == nil || e.server == nil {
 		return

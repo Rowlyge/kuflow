@@ -7,6 +7,9 @@ import (
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
+	"time"
+
+	authcache "github.com/Rowlyge/kuflow/internal/auth/cache"
 )
 
 func TestEnvironmentHealthEndpoint(t *testing.T) {
@@ -89,6 +92,10 @@ func TestEnvironmentProxyPipeline(t *testing.T) {
 	}
 	defer env.Close()
 
+	env.SetAPIKeys(
+		newValidAPIKey(),
+	)
+
 	req, err := http.NewRequest(
 		http.MethodGet,
 		env.URL()+"/proxy-test?value=42",
@@ -97,6 +104,11 @@ func TestEnvironmentProxyPipeline(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create request: %v", err)
 	}
+
+	req.Header.Set(
+		"X-API-Key",
+		"integration-valid-key",
+	)
 
 	resp, err := env.Client().Do(req)
 	if err != nil {
@@ -150,6 +162,287 @@ func TestEnvironmentProxyPipeline(t *testing.T) {
 			"upstream request count = %d, want %d",
 			got,
 			1,
+		)
+	}
+}
+
+func newAuthTestUpstream(
+	t *testing.T,
+	requests *atomic.Int64,
+) *httptest.Server {
+	t.Helper()
+
+	return httptest.NewServer(
+		http.HandlerFunc(func(
+			w http.ResponseWriter,
+			r *http.Request,
+		) {
+			requests.Add(1)
+
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte("upstream response"))
+		}),
+	)
+}
+
+func newValidAPIKey() authcache.APIKey {
+	return authcache.APIKey{
+		ID:      1,
+		Key:     "integration-valid-key",
+		Owner:   "integration-test",
+		Enabled: true,
+	}
+}
+
+func TestEnvironmentAuthenticationValidKey(t *testing.T) {
+	var requests atomic.Int64
+
+	upstream := newAuthTestUpstream(t, &requests)
+	defer upstream.Close()
+
+	env, err := NewEnvironment(upstream.URL)
+	if err != nil {
+		t.Fatalf("NewEnvironment() error = %v", err)
+	}
+	defer env.Close()
+
+	env.SetAPIKeys(
+		newValidAPIKey(),
+	)
+
+	req, err := http.NewRequest(
+		http.MethodGet,
+		env.URL()+"/proxy-test",
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("create request: %v", err)
+	}
+
+	req.Header.Set(
+		"X-API-Key",
+		"integration-valid-key",
+	)
+
+	resp, err := env.Client().Do(req)
+	if err != nil {
+		t.Fatalf("proxy request error = %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf(
+			"status = %d, want %d",
+			resp.StatusCode,
+			http.StatusCreated,
+		)
+	}
+
+	if got := requests.Load(); got != 1 {
+		t.Fatalf(
+			"upstream request count = %d, want %d",
+			got,
+			1,
+		)
+	}
+}
+
+func TestEnvironmentAuthenticationMissingKey(t *testing.T) {
+	var requests atomic.Int64
+
+	upstream := newAuthTestUpstream(t, &requests)
+	defer upstream.Close()
+
+	env, err := NewEnvironment(upstream.URL)
+	if err != nil {
+		t.Fatalf("NewEnvironment() error = %v", err)
+	}
+	defer env.Close()
+
+	resp, err := env.Client().Get(
+		env.URL() + "/proxy-test",
+	)
+	if err != nil {
+		t.Fatalf("proxy request error = %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf(
+			"status = %d, want %d",
+			resp.StatusCode,
+			http.StatusUnauthorized,
+		)
+	}
+
+	if got := requests.Load(); got != 0 {
+		t.Fatalf(
+			"upstream request count = %d, want %d",
+			got,
+			0,
+		)
+	}
+}
+
+func TestEnvironmentAuthenticationInvalidKey(t *testing.T) {
+	var requests atomic.Int64
+
+	upstream := newAuthTestUpstream(t, &requests)
+	defer upstream.Close()
+
+	env, err := NewEnvironment(upstream.URL)
+	if err != nil {
+		t.Fatalf("NewEnvironment() error = %v", err)
+	}
+	defer env.Close()
+
+	env.SetAPIKeys(
+		newValidAPIKey(),
+	)
+
+	req, err := http.NewRequest(
+		http.MethodGet,
+		env.URL()+"/proxy-test",
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("create request: %v", err)
+	}
+
+	req.Header.Set(
+		"X-API-Key",
+		"integration-invalid-key",
+	)
+
+	resp, err := env.Client().Do(req)
+	if err != nil {
+		t.Fatalf("proxy request error = %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf(
+			"status = %d, want %d",
+			resp.StatusCode,
+			http.StatusUnauthorized,
+		)
+	}
+
+	if got := requests.Load(); got != 0 {
+		t.Fatalf(
+			"upstream request count = %d, want %d",
+			got,
+			0,
+		)
+	}
+}
+
+func TestEnvironmentAuthenticationDisabledKey(t *testing.T) {
+	var requests atomic.Int64
+
+	upstream := newAuthTestUpstream(t, &requests)
+	defer upstream.Close()
+
+	env, err := NewEnvironment(upstream.URL)
+	if err != nil {
+		t.Fatalf("NewEnvironment() error = %v", err)
+	}
+	defer env.Close()
+
+	key := newValidAPIKey()
+	key.Enabled = false
+
+	env.SetAPIKeys(key)
+
+	req, err := http.NewRequest(
+		http.MethodGet,
+		env.URL()+"/proxy-test",
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("create request: %v", err)
+	}
+
+	req.Header.Set(
+		"X-API-Key",
+		key.Key,
+	)
+
+	resp, err := env.Client().Do(req)
+	if err != nil {
+		t.Fatalf("proxy request error = %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf(
+			"status = %d, want %d",
+			resp.StatusCode,
+			http.StatusUnauthorized,
+		)
+	}
+
+	if got := requests.Load(); got != 0 {
+		t.Fatalf(
+			"upstream request count = %d, want %d",
+			got,
+			0,
+		)
+	}
+}
+
+func TestEnvironmentAuthenticationExpiredKey(t *testing.T) {
+	var requests atomic.Int64
+
+	upstream := newAuthTestUpstream(t, &requests)
+	defer upstream.Close()
+
+	env, err := NewEnvironment(upstream.URL)
+	if err != nil {
+		t.Fatalf("NewEnvironment() error = %v", err)
+	}
+	defer env.Close()
+
+	expiredAt := time.Now().Add(-time.Minute)
+
+	key := newValidAPIKey()
+	key.ExpiresAt = &expiredAt
+
+	env.SetAPIKeys(key)
+
+	req, err := http.NewRequest(
+		http.MethodGet,
+		env.URL()+"/proxy-test",
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("create request: %v", err)
+	}
+
+	req.Header.Set(
+		"X-API-Key",
+		key.Key,
+	)
+
+	resp, err := env.Client().Do(req)
+	if err != nil {
+		t.Fatalf("proxy request error = %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf(
+			"status = %d, want %d",
+			resp.StatusCode,
+			http.StatusUnauthorized,
+		)
+	}
+
+	if got := requests.Load(); got != 0 {
+		t.Fatalf(
+			"upstream request count = %d, want %d",
+			got,
+			0,
 		)
 	}
 }
