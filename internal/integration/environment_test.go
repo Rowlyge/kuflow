@@ -2,6 +2,7 @@ package integration
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	authcache "github.com/Rowlyge/kuflow/internal/auth/cache"
+	"github.com/Rowlyge/kuflow/internal/ratelimit"
 )
 
 func TestEnvironmentHealthEndpoint(t *testing.T) {
@@ -454,7 +456,15 @@ func TestEnvironmentRateLimitPipeline(t *testing.T) {
 	upstream := newAuthTestUpstream(t, &requests)
 	defer upstream.Close()
 
-	env, err := NewEnvironment(upstream.URL)
+	env, err := NewEnvironmentWithLimits(
+		ratelimit.Config{
+			Capacity:       2,
+			RefillTokens:   2,
+			RefillInterval: time.Hour,
+		},
+		100,
+		upstream.URL,
+	)
 	if err != nil {
 		t.Fatalf("NewEnvironment() error = %v", err)
 	}
@@ -544,7 +554,6 @@ func TestEnvironmentConnectionLimitPipeline(t *testing.T) {
 
 	started := make(chan struct{}, 2)
 	release := make(chan struct{})
-	onceRelease := sync.Once{}
 
 	upstream := httptest.NewServer(
 		http.HandlerFunc(func(
@@ -563,15 +572,28 @@ func TestEnvironmentConnectionLimitPipeline(t *testing.T) {
 	)
 	defer upstream.Close()
 
-	env, err := NewEnvironment(upstream.URL)
+	env, err := NewEnvironmentWithLimits(
+		ratelimit.Config{
+			Capacity:       100,
+			RefillTokens:   100,
+			RefillInterval: time.Minute,
+		},
+		2,
+		upstream.URL,
+	)
 	if err != nil {
-		t.Fatalf("NewEnvironment() error = %v", err)
+		t.Fatalf("NewEnvironmentWithConnectionLimit() error = %v", err)
 	}
 	defer env.Close()
 
 	env.SetAPIKeys(
 		newValidAPIKey(),
 	)
+
+	var releaseOnce sync.Once
+	defer releaseOnce.Do(func() {
+		close(release)
+	})
 
 	type result struct {
 		status int
@@ -676,7 +698,7 @@ func TestEnvironmentConnectionLimitPipeline(t *testing.T) {
 	}
 
 	// Release the first two upstream requests.
-	onceRelease.Do(func() {
+	releaseOnce.Do(func() {
 		close(release)
 	})
 
@@ -715,5 +737,137 @@ func TestEnvironmentConnectionLimitPipeline(t *testing.T) {
 			got,
 			2,
 		)
+	}
+}
+
+func TestEnvironmentBalancerRoundRobin(t *testing.T) {
+	var requests [3]atomic.Int64
+
+	upstreams := make([]*httptest.Server, 0, 3)
+
+	for i := range requests {
+		index := i
+
+		upstream := httptest.NewServer(
+			http.HandlerFunc(func(
+				w http.ResponseWriter,
+				r *http.Request,
+			) {
+				requests[index].Add(1)
+
+				w.Header().Set(
+					"X-Upstream",
+					fmt.Sprintf("upstream-%d", index+1),
+				)
+
+				w.WriteHeader(http.StatusCreated)
+
+				_, _ = w.Write(
+					[]byte(
+						fmt.Sprintf(
+							"response-from-upstream-%d",
+							index+1,
+						),
+					),
+				)
+			}),
+		)
+
+		upstreams = append(upstreams, upstream)
+	}
+
+	defer func() {
+		for _, upstream := range upstreams {
+			upstream.Close()
+		}
+	}()
+
+	targets := make([]string, 0, len(upstreams))
+
+	for _, upstream := range upstreams {
+		targets = append(targets, upstream.URL)
+	}
+
+	env, err := NewEnvironment(targets...)
+	if err != nil {
+		t.Fatalf("NewEnvironment() error = %v", err)
+	}
+	defer env.Close()
+
+	env.SetAPIKeys(
+		newValidAPIKey(),
+	)
+
+	expectedUpstreams := []string{
+		"upstream-1",
+		"upstream-2",
+		"upstream-3",
+		"upstream-1",
+		"upstream-2",
+		"upstream-3",
+	}
+
+	for i, expected := range expectedUpstreams {
+		req, err := http.NewRequest(
+			http.MethodGet,
+			env.URL()+"/proxy-test",
+			nil,
+		)
+		if err != nil {
+			t.Fatalf(
+				"request %d: create request: %v",
+				i+1,
+				err,
+			)
+		}
+
+		req.Header.Set(
+			"X-API-Key",
+			"integration-valid-key",
+		)
+
+		resp, err := env.Client().Do(req)
+		if err != nil {
+			t.Fatalf(
+				"request %d: proxy request error: %v",
+				i+1,
+				err,
+			)
+		}
+
+		if resp.StatusCode != http.StatusCreated {
+			resp.Body.Close()
+
+			t.Fatalf(
+				"request %d: status = %d, want %d",
+				i+1,
+				resp.StatusCode,
+				http.StatusCreated,
+			)
+		}
+
+		if got := resp.Header.Get("X-Upstream"); got != expected {
+			resp.Body.Close()
+
+			t.Fatalf(
+				"request %d: X-Upstream = %q, want %q",
+				i+1,
+				got,
+				expected,
+			)
+		}
+
+		resp.Body.Close()
+	}
+
+	for i := range requests {
+		if got := requests[i].Load(); got != 2 {
+			t.Fatalf(
+				"upstream-%d request count = %d, want %d",
+				i+1,
+				got,
+				2,
+			)
+		}
 	}
 }
