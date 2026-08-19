@@ -871,3 +871,231 @@ func TestEnvironmentBalancerRoundRobin(t *testing.T) {
 		}
 	}
 }
+
+func TestEnvironmentHealthCheckerRemovesUnhealthyUpstream(
+	t *testing.T,
+) {
+	var upstreamAHealthy atomic.Bool
+	upstreamAHealthy.Store(true)
+
+	upstreamA := httptest.NewServer(
+		http.HandlerFunc(func(
+			w http.ResponseWriter,
+			r *http.Request,
+		) {
+			switch r.URL.Path {
+
+			case "/health":
+				if !upstreamAHealthy.Load() {
+					http.Error(
+						w,
+						"unhealthy",
+						http.StatusServiceUnavailable,
+					)
+					return
+				}
+
+				w.WriteHeader(http.StatusOK)
+
+			default:
+				w.Header().Set(
+					"X-Upstream",
+					"upstream-A",
+				)
+				w.WriteHeader(http.StatusCreated)
+				_, _ = w.Write(
+					[]byte("response-from-upstream-A"),
+				)
+			}
+		}),
+	)
+	defer upstreamA.Close()
+
+	upstreamB := httptest.NewServer(
+		http.HandlerFunc(func(
+			w http.ResponseWriter,
+			r *http.Request,
+		) {
+			switch r.URL.Path {
+
+			case "/health":
+				w.WriteHeader(http.StatusOK)
+
+			default:
+				w.Header().Set(
+					"X-Upstream",
+					"upstream-B",
+				)
+				w.WriteHeader(http.StatusCreated)
+				_, _ = w.Write(
+					[]byte("response-from-upstream-B"),
+				)
+			}
+		}),
+	)
+	defer upstreamB.Close()
+
+	env, err := NewEnvironmentWithHealth(
+		upstreamA.URL,
+		upstreamB.URL,
+	)
+	if err != nil {
+		t.Fatalf(
+			"NewEnvironmentWithHealth() error = %v",
+			err,
+		)
+	}
+	defer env.Close()
+
+	env.SetAPIKeys(
+		newValidAPIKey(),
+	)
+
+	// Wait until the initial health checks confirm
+	// that both upstreams are healthy.
+	deadline := time.Now().Add(2 * time.Second)
+
+	for {
+		upstreams := env.upstreams.Upstreams()
+
+		if len(upstreams) != 2 {
+			t.Fatalf(
+				"upstream count = %d, want %d",
+				len(upstreams),
+				2,
+			)
+		}
+
+		if upstreams[0].Alive() &&
+			upstreams[1].Alive() {
+			break
+		}
+
+		if time.Now().After(deadline) {
+			t.Fatal(
+				"timed out waiting for both upstreams to become healthy",
+			)
+		}
+
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	// Both upstreams are healthy, so round-robin must be
+	// able to send traffic to both of them.
+	for i := 0; i < 2; i++ {
+		req, err := http.NewRequest(
+			http.MethodGet,
+			env.URL()+"/proxy-test",
+			nil,
+		)
+		if err != nil {
+			t.Fatalf(
+				"create request %d: %v",
+				i+1,
+				err,
+			)
+		}
+
+		req.Header.Set(
+			"X-API-Key",
+			"integration-valid-key",
+		)
+
+		resp, err := env.Client().Do(req)
+		if err != nil {
+			t.Fatalf(
+				"request %d error = %v",
+				i+1,
+				err,
+			)
+		}
+
+		if resp.StatusCode != http.StatusCreated {
+			resp.Body.Close()
+
+			t.Fatalf(
+				"request %d status = %d, want %d",
+				i+1,
+				resp.StatusCode,
+				http.StatusCreated,
+			)
+		}
+
+		resp.Body.Close()
+	}
+
+	// Make upstream A unhealthy.
+	upstreamAHealthy.Store(false)
+
+	// Wait until Health Checker detects the failure
+	// and marks upstream A as DOWN.
+	deadline = time.Now().Add(2 * time.Second)
+
+	for env.upstreams.Upstreams()[0].Alive() {
+		if time.Now().After(deadline) {
+			t.Fatal(
+				"timed out waiting for upstream-A to become unhealthy",
+			)
+		}
+
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	if !env.upstreams.Upstreams()[1].Alive() {
+		t.Fatal("upstream-B became unhealthy unexpectedly")
+	}
+
+	// After A is marked DOWN, all traffic must go to B.
+	for i := 0; i < 6; i++ {
+		req, err := http.NewRequest(
+			http.MethodGet,
+			env.URL()+"/proxy-test",
+			nil,
+		)
+		if err != nil {
+			t.Fatalf(
+				"create request %d: %v",
+				i+1,
+				err,
+			)
+		}
+
+		req.Header.Set(
+			"X-API-Key",
+			"integration-valid-key",
+		)
+
+		resp, err := env.Client().Do(req)
+		if err != nil {
+			t.Fatalf(
+				"request %d error = %v",
+				i+1,
+				err,
+			)
+		}
+
+		if resp.StatusCode != http.StatusCreated {
+			resp.Body.Close()
+
+			t.Fatalf(
+				"request %d status = %d, want %d",
+				i+1,
+				resp.StatusCode,
+				http.StatusCreated,
+			)
+		}
+
+		if got := resp.Header.Get("X-Upstream"); got != "upstream-B" {
+			resp.Body.Close()
+
+			t.Fatalf(
+				"request %d X-Upstream = %q, want %q",
+				i+1,
+				got,
+				"upstream-B",
+			)
+		}
+
+		resp.Body.Close()
+	}
+}
