@@ -1099,3 +1099,130 @@ func TestEnvironmentHealthCheckerRemovesUnhealthyUpstream(
 		resp.Body.Close()
 	}
 }
+
+func TestEnvironmentCircuitBreakerStopsUpstreamTraffic(t *testing.T) {
+	var requests atomic.Int64
+
+	upstream := httptest.NewServer(
+		http.HandlerFunc(func(
+			w http.ResponseWriter,
+			r *http.Request,
+		) {
+			requests.Add(1)
+
+			http.Error(
+				w,
+				"upstream failure",
+				http.StatusInternalServerError,
+			)
+		}),
+	)
+	defer upstream.Close()
+
+	env, err := NewEnvironment(upstream.URL)
+	if err != nil {
+		t.Fatalf("NewEnvironment() error = %v", err)
+	}
+	defer env.Close()
+
+	env.SetAPIKeys(
+		newValidAPIKey(),
+	)
+
+	client := env.Client()
+
+	// Default Circuit Breaker configuration:
+	// FailureThreshold = 5.
+	const failureThreshold = 5
+
+	for i := 0; i < failureThreshold; i++ {
+		req, err := http.NewRequest(
+			http.MethodGet,
+			env.URL()+"/proxy-test",
+			nil,
+		)
+		if err != nil {
+			t.Fatalf(
+				"request %d: create request: %v",
+				i+1,
+				err,
+			)
+		}
+
+		req.Header.Set(
+			"X-API-Key",
+			"integration-valid-key",
+		)
+
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf(
+				"request %d: proxy request error: %v",
+				i+1,
+				err,
+			)
+		}
+
+		if resp.StatusCode != http.StatusInternalServerError {
+			resp.Body.Close()
+
+			t.Fatalf(
+				"request %d: status = %d, want %d",
+				i+1,
+				resp.StatusCode,
+				http.StatusInternalServerError,
+			)
+		}
+
+		resp.Body.Close()
+	}
+
+	// All failures must have reached the upstream.
+	if got := requests.Load(); got != failureThreshold {
+		t.Fatalf(
+			"upstream request count after failures = %d, want %d",
+			got,
+			failureThreshold,
+		)
+	}
+
+	// The next request must be rejected by the opened
+	// Circuit Breaker without reaching the upstream.
+	req, err := http.NewRequest(
+		http.MethodGet,
+		env.URL()+"/proxy-test",
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("create rejected request: %v", err)
+	}
+
+	req.Header.Set(
+		"X-API-Key",
+		"integration-valid-key",
+	)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("rejected request error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf(
+			"rejected request status = %d, want %d",
+			resp.StatusCode,
+			http.StatusServiceUnavailable,
+		)
+	}
+
+	// Crucial assertion:
+	// the rejected request must NOT reach the upstream.
+	if got := requests.Load(); got != failureThreshold {
+		t.Fatalf(
+			"upstream request count after breaker opened = %d, want %d",
+			got,
+			failureThreshold,
+		)
+	}
+}
