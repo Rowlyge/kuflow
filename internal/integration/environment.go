@@ -11,6 +11,7 @@ import (
 	"github.com/Rowlyge/kuflow/internal/balancer"
 	"github.com/Rowlyge/kuflow/internal/config"
 	"github.com/Rowlyge/kuflow/internal/connectionlimit"
+	"github.com/Rowlyge/kuflow/internal/health"
 	"github.com/Rowlyge/kuflow/internal/metrics"
 	"github.com/Rowlyge/kuflow/internal/middleware"
 	"github.com/Rowlyge/kuflow/internal/model"
@@ -28,6 +29,10 @@ type Environment struct {
 	client *http.Client
 
 	authCache *authcache.Cache
+
+	upstreams     *upstream.Manager
+	healthChecker *health.Checker
+	healthCancel  context.CancelFunc
 }
 
 // NewEnvironment creates a real KuFlow HTTP pipeline.
@@ -83,8 +88,12 @@ func NewEnvironment(
 		Collector: collector,
 	}
 
+	var manager *upstream.Manager
+
 	if len(upstreamTargets) > 0 {
-		manager, err := upstream.NewManager(upstreamTargets)
+		var err error
+
+		manager, err = upstream.NewManager(upstreamTargets)
 		if err != nil {
 			return nil, err
 		}
@@ -194,7 +203,48 @@ func NewEnvironment(
 		server:    server,
 		client:    server.Client(),
 		authCache: authCache,
+		upstreams: manager,
 	}, nil
+}
+
+// NewEnvironmentWithHealth creates an integration environment
+// with two upstreams and a running Health Checker.
+func NewEnvironmentWithHealth(
+	upstreamA string,
+	upstreamB string,
+) (*Environment, error) {
+
+	env, err := NewEnvironment(
+		upstreamA,
+		upstreamB,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	healthCtx, healthCancel := context.WithCancel(
+		context.Background(),
+	)
+
+	healthChecker := health.NewChecker(
+		env.upstreams,
+		config.HealthConfig{
+			Enabled:          true,
+			Interval:         20 * time.Millisecond,
+			Timeout:          50 * time.Millisecond,
+			Path:             "/health",
+			FailureThreshold: 1,
+			SuccessThreshold: 1,
+		},
+		nil,
+	)
+
+	env.healthChecker = healthChecker
+	env.healthCancel = healthCancel
+
+	healthChecker.Start(healthCtx)
+
+	return env, nil
 }
 
 // URL returns the base URL of the KuFlow test server.
@@ -415,11 +465,21 @@ func NewEnvironmentWithLimits(
 
 // Close shuts down the test HTTP server.
 func (e *Environment) Close() {
-	if e == nil || e.server == nil {
+	if e == nil {
 		return
 	}
 
-	e.server.Close()
+	if e.healthCancel != nil {
+		e.healthCancel()
+	}
+
+	if e.healthChecker != nil {
+		e.healthChecker.Wait()
+	}
+
+	if e.server != nil {
+		e.server.Close()
+	}
 }
 
 type memoryRequestRepository struct{}
