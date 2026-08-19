@@ -56,10 +56,14 @@ func NewEnvironment(
 			authservice.NewValidator(authCache),
 		),
 
+		// Small bucket for integration tests.
+		// This allows exactly two requests before
+		// the rate limiter starts returning 429.
 		RateLimiter: ratelimit.New(
 			ratelimit.Config{
-				Capacity:     100,
-				RefillTokens: 100,
+				Capacity:       2,
+				RefillTokens:   0,
+				RefillInterval: time.Minute,
 			},
 		),
 

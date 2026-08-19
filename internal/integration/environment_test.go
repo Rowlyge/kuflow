@@ -446,3 +446,98 @@ func TestEnvironmentAuthenticationExpiredKey(t *testing.T) {
 		)
 	}
 }
+
+func TestEnvironmentRateLimitPipeline(t *testing.T) {
+	var requests atomic.Int64
+
+	upstream := newAuthTestUpstream(t, &requests)
+	defer upstream.Close()
+
+	env, err := NewEnvironment(upstream.URL)
+	if err != nil {
+		t.Fatalf("NewEnvironment() error = %v", err)
+	}
+	defer env.Close()
+
+	env.SetAPIKeys(
+		newValidAPIKey(),
+	)
+
+	client := env.Client()
+
+	for i := 1; i <= 2; i++ {
+		req, err := http.NewRequest(
+			http.MethodGet,
+			env.URL()+"/proxy-test",
+			nil,
+		)
+		if err != nil {
+			t.Fatalf("create request %d: %v", i, err)
+		}
+
+		req.Header.Set(
+			"X-API-Key",
+			"integration-valid-key",
+		)
+
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("request %d error = %v", i, err)
+		}
+
+		resp.Body.Close()
+
+		if resp.StatusCode != http.StatusCreated {
+			t.Fatalf(
+				"request %d status = %d, want %d",
+				i,
+				resp.StatusCode,
+				http.StatusCreated,
+			)
+		}
+	}
+
+	if got := requests.Load(); got != 2 {
+		t.Fatalf(
+			"upstream request count after allowed requests = %d, want %d",
+			got,
+			2,
+		)
+	}
+
+	req, err := http.NewRequest(
+		http.MethodGet,
+		env.URL()+"/proxy-test",
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("create rejected request: %v", err)
+	}
+
+	req.Header.Set(
+		"X-API-Key",
+		"integration-valid-key",
+	)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("rejected request error = %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf(
+			"rejected request status = %d, want %d",
+			resp.StatusCode,
+			http.StatusTooManyRequests,
+		)
+	}
+
+	if got := requests.Load(); got != 2 {
+		t.Fatalf(
+			"upstream request count after rejection = %d, want %d",
+			got,
+			2,
+		)
+	}
+}
