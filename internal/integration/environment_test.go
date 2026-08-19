@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -146,7 +147,7 @@ func TestEnvironmentProxyPipeline(t *testing.T) {
 	}
 
 	if requestID := resp.Header.Get("X-Request-ID"); requestID == "" {
-		t.Fatal("proxy response did not contain X-Request-ID")
+		t.Fatalf("proxy response did not contain X-Request-ID")
 	}
 
 	if got := resp.Header.Get("X-Upstream"); got != "integration" {
@@ -465,14 +466,14 @@ func TestEnvironmentRateLimitPipeline(t *testing.T) {
 
 	client := env.Client()
 
-	for i := 1; i <= 2; i++ {
+	for i := 0; i < 2; i++ {
 		req, err := http.NewRequest(
 			http.MethodGet,
 			env.URL()+"/proxy-test",
 			nil,
 		)
 		if err != nil {
-			t.Fatalf("create request %d: %v", i, err)
+			t.Fatalf("create request %d: %v", i+1, err)
 		}
 
 		req.Header.Set(
@@ -482,27 +483,23 @@ func TestEnvironmentRateLimitPipeline(t *testing.T) {
 
 		resp, err := client.Do(req)
 		if err != nil {
-			t.Fatalf("request %d error = %v", i, err)
+			t.Fatalf(
+				"request %d error = %v",
+				i+1,
+				err,
+			)
 		}
-
-		resp.Body.Close()
 
 		if resp.StatusCode != http.StatusCreated {
 			t.Fatalf(
 				"request %d status = %d, want %d",
-				i,
+				i+1,
 				resp.StatusCode,
 				http.StatusCreated,
 			)
 		}
-	}
 
-	if got := requests.Load(); got != 2 {
-		t.Fatalf(
-			"upstream request count after allowed requests = %d, want %d",
-			got,
-			2,
-		)
+		resp.Body.Close()
 	}
 
 	req, err := http.NewRequest(
@@ -535,7 +532,186 @@ func TestEnvironmentRateLimitPipeline(t *testing.T) {
 
 	if got := requests.Load(); got != 2 {
 		t.Fatalf(
+			"upstream request count = %d, want %d",
+			got,
+			2,
+		)
+	}
+}
+
+func TestEnvironmentConnectionLimitPipeline(t *testing.T) {
+	var requests atomic.Int64
+
+	started := make(chan struct{}, 2)
+	release := make(chan struct{})
+	onceRelease := sync.Once{}
+
+	upstream := httptest.NewServer(
+		http.HandlerFunc(func(
+			w http.ResponseWriter,
+			r *http.Request,
+		) {
+			requests.Add(1)
+
+			started <- struct{}{}
+
+			<-release
+
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte("upstream response"))
+		}),
+	)
+	defer upstream.Close()
+
+	env, err := NewEnvironment(upstream.URL)
+	if err != nil {
+		t.Fatalf("NewEnvironment() error = %v", err)
+	}
+	defer env.Close()
+
+	env.SetAPIKeys(
+		newValidAPIKey(),
+	)
+
+	type result struct {
+		status int
+		err    error
+	}
+
+	results := make(chan result, 2)
+
+	sendRequest := func() {
+		req, err := http.NewRequest(
+			http.MethodGet,
+			env.URL()+"/proxy-test",
+			nil,
+		)
+		if err != nil {
+			results <- result{err: err}
+			return
+		}
+
+		req.Header.Set(
+			"X-API-Key",
+			"integration-valid-key",
+		)
+
+		resp, err := env.Client().Do(req)
+		if err != nil {
+			results <- result{err: err}
+			return
+		}
+
+		defer resp.Body.Close()
+
+		results <- result{
+			status: resp.StatusCode,
+		}
+	}
+
+	var wg sync.WaitGroup
+
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		sendRequest()
+	}()
+
+	go func() {
+		defer wg.Done()
+		sendRequest()
+	}()
+
+	// Wait until both connection-limit slots are occupied
+	// by requests that have actually reached the upstream.
+	timeout := time.NewTimer(2 * time.Second)
+	defer timeout.Stop()
+
+	for i := 0; i < 2; i++ {
+		select {
+		case <-started:
+		case <-timeout.C:
+			t.Fatal("timed out waiting for both upstream requests")
+		}
+	}
+
+	// Both connection slots are now occupied.
+	// The third request must be rejected before reaching the upstream.
+	thirdReq, err := http.NewRequest(
+		http.MethodGet,
+		env.URL()+"/proxy-test",
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("create third request: %v", err)
+	}
+
+	thirdReq.Header.Set(
+		"X-API-Key",
+		"integration-valid-key",
+	)
+
+	thirdResp, err := env.Client().Do(thirdReq)
+	if err != nil {
+		t.Fatalf("third request error = %v", err)
+	}
+	defer thirdResp.Body.Close()
+
+	if thirdResp.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf(
+			"third request status = %d, want %d",
+			thirdResp.StatusCode,
+			http.StatusTooManyRequests,
+		)
+	}
+
+	// The third request must not reach the upstream.
+	if got := requests.Load(); got != 2 {
+		t.Fatalf(
 			"upstream request count after rejection = %d, want %d",
+			got,
+			2,
+		)
+	}
+
+	// Release the first two upstream requests.
+	onceRelease.Do(func() {
+		close(release)
+	})
+
+	wg.Wait()
+
+	for i := 0; i < 2; i++ {
+		select {
+		case result := <-results:
+			if result.err != nil {
+				t.Fatalf(
+					"upstream request %d error = %v",
+					i+1,
+					result.err,
+				)
+			}
+
+			if result.status != http.StatusCreated {
+				t.Fatalf(
+					"upstream request %d status = %d, want %d",
+					i+1,
+					result.status,
+					http.StatusCreated,
+				)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf(
+				"timed out waiting for upstream request %d",
+				i+1,
+			)
+		}
+	}
+
+	if got := requests.Load(); got != 2 {
+		t.Fatalf(
+			"final upstream request count = %d, want %d",
 			got,
 			2,
 		)
