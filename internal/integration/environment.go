@@ -56,9 +56,6 @@ func NewEnvironment(
 			authservice.NewValidator(authCache),
 		),
 
-		// Small bucket for integration tests.
-		// This allows exactly two requests before
-		// the rate limiter starts returning 429.
 		RateLimiter: ratelimit.New(
 			ratelimit.Config{
 				Capacity:       2,
@@ -67,7 +64,9 @@ func NewEnvironment(
 			},
 		),
 
-		ConnectionLimiter: connectionlimit.New(100),
+		// Small connection limit for integration tests.
+		// This allows exactly two concurrent proxy requests.
+		ConnectionLimiter: connectionlimit.New(2),
 	}
 
 	infrastructure := &app.Infrastructure{
