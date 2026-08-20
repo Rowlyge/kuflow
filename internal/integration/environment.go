@@ -30,6 +30,8 @@ type Environment struct {
 
 	authCache *authcache.Cache
 
+	collector *metrics.Collector
+
 	upstreams     *upstream.Manager
 	healthChecker *health.Checker
 	healthCancel  context.CancelFunc
@@ -203,6 +205,7 @@ func NewEnvironment(
 		server:    server,
 		client:    server.Client(),
 		authCache: authCache,
+		collector: collector,
 		upstreams: manager,
 	}, nil
 }
@@ -460,6 +463,7 @@ func NewEnvironmentWithLimits(
 		server:    server,
 		client:    server.Client(),
 		authCache: authCache,
+		collector: collector,
 	}, nil
 }
 
@@ -491,4 +495,8 @@ func (r *memoryRequestRepository) Create(
 	_ *model.Request,
 ) error {
 	return nil
+}
+
+func (e *Environment) Collector() *metrics.Collector {
+	return e.collector
 }
