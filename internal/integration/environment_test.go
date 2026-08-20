@@ -1382,3 +1382,212 @@ func TestEnvironmentTransportPropagatesResponse(t *testing.T) {
 		string(body),
 	)
 }
+
+func TestEnvironmentMetricsSuccessfulRequest(t *testing.T) {
+	t.Parallel()
+
+	upstream := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusCreated)
+
+			_, _ = w.Write([]byte("ok"))
+		}),
+	)
+	defer upstream.Close()
+
+	env, err := NewEnvironment(
+		upstream.URL,
+	)
+	require.NoError(t, err)
+	defer env.Close()
+
+	env.SetAPIKeys(
+		authcache.APIKey{
+			Key:     "test-key",
+			Owner:   "integration-test",
+			Enabled: true,
+		},
+	)
+
+	req, err := http.NewRequest(
+		http.MethodGet,
+		env.URL()+"/proxy-test",
+		nil,
+	)
+	require.NoError(t, err)
+
+	req.Header.Set("X-API-Key", "test-key")
+
+	resp, err := env.Client().Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(
+		t,
+		http.StatusCreated,
+		resp.StatusCode,
+	)
+
+	snapshot := env.Collector().Snapshot()
+
+	assert.Equal(
+		t,
+		uint64(1),
+		snapshot.HTTP.Requests,
+	)
+
+	assert.Equal(
+		t,
+		uint64(1),
+		snapshot.HTTP.Success,
+	)
+
+	assert.Equal(
+		t,
+		uint64(0),
+		snapshot.HTTP.Failed,
+	)
+
+	assert.Equal(
+		t,
+		uint64(1),
+		snapshot.Telemetry.Saved,
+	)
+
+	assert.Equal(
+		t,
+		uint64(0),
+		snapshot.Telemetry.Failed,
+	)
+}
+
+func TestEnvironmentMetricsFailedRequest(t *testing.T) {
+	t.Parallel()
+
+	upstream := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+		}),
+	)
+	defer upstream.Close()
+
+	env, err := NewEnvironment(
+		upstream.URL,
+	)
+	require.NoError(t, err)
+	defer env.Close()
+
+	env.SetAPIKeys(
+		authcache.APIKey{
+			Key:     "test-key",
+			Owner:   "integration-test",
+			Enabled: true,
+		},
+	)
+
+	req, err := http.NewRequest(
+		http.MethodGet,
+		env.URL()+"/proxy-test",
+		nil,
+	)
+	require.NoError(t, err)
+
+	req.Header.Set("X-API-Key", "test-key")
+
+	resp, err := env.Client().Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(
+		t,
+		http.StatusInternalServerError,
+		resp.StatusCode,
+	)
+
+	snapshot := env.Collector().Snapshot()
+
+	assert.Equal(
+		t,
+		uint64(1),
+		snapshot.HTTP.Requests,
+	)
+
+	assert.Equal(
+		t,
+		uint64(0),
+		snapshot.HTTP.Success,
+	)
+
+	assert.Equal(
+		t,
+		uint64(1),
+		snapshot.HTTP.Failed,
+	)
+}
+
+func TestEnvironmentMetricsRateLimitedRequest(t *testing.T) {
+	t.Parallel()
+
+	upstream := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusCreated)
+		}),
+	)
+	defer upstream.Close()
+
+	env, err := NewEnvironmentWithLimits(
+		ratelimit.Config{
+			Capacity:       1,
+			RefillTokens:   1,
+			RefillInterval: time.Hour,
+		},
+		100,
+		upstream.URL,
+	)
+	require.NoError(t, err)
+	defer env.Close()
+
+	env.SetAPIKeys(
+		authcache.APIKey{
+			Key:     "test-key",
+			Owner:   "integration-test",
+			Enabled: true,
+		},
+	)
+
+	for i := 0; i < 2; i++ {
+		req, err := http.NewRequest(
+			http.MethodGet,
+			env.URL()+"/proxy-test",
+			nil,
+		)
+		require.NoError(t, err)
+
+		req.Header.Set("X-API-Key", "test-key")
+
+		resp, err := env.Client().Do(req)
+		require.NoError(t, err)
+
+		resp.Body.Close()
+	}
+
+	snapshot := env.Collector().Snapshot()
+
+	assert.Equal(
+		t,
+		uint64(1),
+		snapshot.HTTP.Success,
+	)
+
+	assert.Equal(
+		t,
+		uint64(0),
+		snapshot.HTTP.Failed,
+	)
+
+	assert.Equal(
+		t,
+		uint64(1),
+		snapshot.HTTP.RateLimited,
+	)
+}
