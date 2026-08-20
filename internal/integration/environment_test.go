@@ -13,6 +13,8 @@ import (
 
 	authcache "github.com/Rowlyge/kuflow/internal/auth/cache"
 	"github.com/Rowlyge/kuflow/internal/ratelimit"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestEnvironmentHealthEndpoint(t *testing.T) {
@@ -1225,4 +1227,158 @@ func TestEnvironmentCircuitBreakerStopsUpstreamTraffic(t *testing.T) {
 			failureThreshold,
 		)
 	}
+}
+
+func TestEnvironmentTransportConnectionFailure(t *testing.T) {
+	t.Parallel()
+
+	env, err := NewEnvironment(
+		"http://127.0.0.1:65534",
+	)
+	require.NoError(t, err)
+	defer env.Close()
+
+	expiresAt := time.Now().Add(time.Hour)
+
+	env.SetAPIKeys(
+		authcache.APIKey{
+			Key:       "test-key",
+			Owner:     "integration-test",
+			Enabled:   true,
+			ExpiresAt: &expiresAt,
+		},
+	)
+
+	req, err := http.NewRequest(
+		http.MethodGet,
+		env.URL()+"/proxy-test",
+		nil,
+	)
+	require.NoError(t, err)
+
+	req.Header.Set("X-API-Key", "test-key")
+
+	resp, err := env.Client().Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(
+		t,
+		http.StatusBadGateway,
+		resp.StatusCode,
+	)
+}
+
+func TestEnvironmentTransportTimeout(t *testing.T) {
+	t.Parallel()
+
+	slowUpstream := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			time.Sleep(2 * time.Second)
+
+			w.WriteHeader(http.StatusOK)
+		}),
+	)
+	defer slowUpstream.Close()
+
+	env, err := NewEnvironment(
+		slowUpstream.URL,
+	)
+	require.NoError(t, err)
+	defer env.Close()
+
+	expiresAt := time.Now().Add(time.Hour)
+
+	env.SetAPIKeys(
+		authcache.APIKey{
+			Key:       "test-key",
+			Owner:     "integration-test",
+			Enabled:   true,
+			ExpiresAt: &expiresAt,
+		},
+	)
+
+	req, err := http.NewRequest(
+		http.MethodGet,
+		env.URL()+"/proxy-test",
+		nil,
+	)
+	require.NoError(t, err)
+
+	req.Header.Set("X-API-Key", "test-key")
+
+	resp, err := env.Client().Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(
+		t,
+		http.StatusBadGateway,
+		resp.StatusCode,
+	)
+}
+
+func TestEnvironmentTransportPropagatesResponse(t *testing.T) {
+	t.Parallel()
+
+	upstream := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("X-Upstream", "ok")
+			w.WriteHeader(http.StatusCreated)
+
+			_, _ = w.Write([]byte("transport-ok"))
+		}),
+	)
+	defer upstream.Close()
+
+	env, err := NewEnvironment(
+		upstream.URL,
+	)
+	require.NoError(t, err)
+	defer env.Close()
+
+	expiresAt := time.Now().Add(time.Hour)
+
+	env.SetAPIKeys(
+		authcache.APIKey{
+			Key:       "test-key",
+			Owner:     "integration-test",
+			Enabled:   true,
+			ExpiresAt: &expiresAt,
+		},
+	)
+
+	req, err := http.NewRequest(
+		http.MethodGet,
+		env.URL()+"/proxy-test",
+		nil,
+	)
+	require.NoError(t, err)
+
+	req.Header.Set("X-API-Key", "test-key")
+
+	resp, err := env.Client().Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	assert.Equal(
+		t,
+		http.StatusCreated,
+		resp.StatusCode,
+	)
+
+	assert.Equal(
+		t,
+		"ok",
+		resp.Header.Get("X-Upstream"),
+	)
+
+	assert.Equal(
+		t,
+		"transport-ok",
+		string(body),
+	)
 }
