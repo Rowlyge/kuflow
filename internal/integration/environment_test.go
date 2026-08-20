@@ -1591,3 +1591,301 @@ func TestEnvironmentMetricsRateLimitedRequest(t *testing.T) {
 		snapshot.HTTP.RateLimited,
 	)
 }
+
+func TestEnvironmentFullProxyPipelineHappyPath(
+	t *testing.T,
+) {
+	t.Parallel()
+
+	var upstreamHits atomic.Int32
+
+	upstreamServer := httptest.NewServer(
+		http.HandlerFunc(func(
+			w http.ResponseWriter,
+			r *http.Request,
+		) {
+
+			switch r.URL.Path {
+
+			case "/health":
+				w.WriteHeader(
+					http.StatusOK,
+				)
+				return
+
+			case "/proxy-test":
+				upstreamHits.Add(1)
+
+				w.WriteHeader(
+					http.StatusCreated,
+				)
+
+				_, _ = w.Write(
+					[]byte("pipeline-ok"),
+				)
+				return
+
+			default:
+				w.WriteHeader(
+					http.StatusNotFound,
+				)
+			}
+		}),
+	)
+	defer upstreamServer.Close()
+
+	env, err := NewEnvironmentWithHealth(
+		upstreamServer.URL,
+		upstreamServer.URL,
+	)
+	require.NoError(
+		t,
+		err,
+	)
+	defer env.Close()
+
+	env.SetAPIKeys(
+		authcache.APIKey{
+			Key:     "test-key",
+			Owner:   "integration-test",
+			Enabled: true,
+		},
+	)
+
+	time.Sleep(
+		100 * time.Millisecond,
+	)
+
+	req, err := http.NewRequest(
+		http.MethodGet,
+		env.URL()+"/proxy-test",
+		nil,
+	)
+	require.NoError(
+		t,
+		err,
+	)
+
+	req.Header.Set(
+		"X-API-Key",
+		"test-key",
+	)
+
+	resp, err := env.Client().Do(req)
+	require.NoError(
+		t,
+		err,
+	)
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(
+		resp.Body,
+	)
+	require.NoError(
+		t,
+		err,
+	)
+
+	assert.Equal(
+		t,
+		http.StatusCreated,
+		resp.StatusCode,
+	)
+
+	assert.Equal(
+		t,
+		"pipeline-ok",
+		string(body),
+	)
+
+	assert.Equal(
+		t,
+		int32(1),
+		upstreamHits.Load(),
+	)
+
+	snapshot := env.Collector().Snapshot()
+
+	assert.Equal(
+		t,
+		uint64(1),
+		snapshot.HTTP.Requests,
+	)
+
+	assert.Equal(
+		t,
+		uint64(1),
+		snapshot.HTTP.Success,
+	)
+
+	assert.Equal(
+		t,
+		uint64(0),
+		snapshot.HTTP.Failed,
+	)
+
+	assert.Equal(
+		t,
+		uint64(1),
+		snapshot.Telemetry.Saved,
+	)
+
+	assert.Equal(
+		t,
+		uint64(0),
+		snapshot.Telemetry.Failed,
+	)
+}
+
+func TestEnvironmentSkipsUnhealthyUpstream(
+	t *testing.T,
+) {
+	t.Parallel()
+
+	var upstreamACalls atomic.Int64
+	var upstreamBCalls atomic.Int64
+	var upstreamAProxyCalls atomic.Int64
+	var upstreamAHealthCalls atomic.Int64
+
+	upstreamA := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+			if r.URL.Path == "/health" {
+				upstreamAHealthCalls.Add(1)
+
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+
+			upstreamAProxyCalls.Add(1)
+
+			w.WriteHeader(http.StatusInternalServerError)
+		}),
+	)
+	defer upstreamA.Close()
+
+	upstreamB := httptest.NewServer(
+		http.HandlerFunc(func(
+			w http.ResponseWriter,
+			r *http.Request,
+		) {
+
+			upstreamBCalls.Add(1)
+
+			if r.URL.Path == "/health" {
+				w.WriteHeader(
+					http.StatusOK,
+				)
+				return
+			}
+
+			w.WriteHeader(
+				http.StatusCreated,
+			)
+
+			_, _ = w.Write(
+				[]byte("healthy"),
+			)
+		}),
+	)
+	defer upstreamB.Close()
+
+	env, err := NewEnvironmentWithHealth(
+		upstreamA.URL,
+		upstreamB.URL,
+	)
+	require.NoError(
+		t,
+		err,
+	)
+	defer env.Close()
+
+	env.SetAPIKeys(
+		authcache.APIKey{
+			Key:     "test-key",
+			Owner:   "integration-test",
+			Enabled: true,
+		},
+	)
+
+	require.Eventually(
+		t,
+		func() bool {
+
+			upstreams := env.upstreams.Upstreams()
+
+			if len(upstreams) != 2 {
+				return false
+			}
+
+			return !upstreams[0].Alive() &&
+				upstreams[1].Alive()
+		},
+		3*time.Second,
+		20*time.Millisecond,
+	)
+
+	// Фиксируем количество вызовов ДО пользовательского запроса.
+	aBefore := upstreamACalls.Load()
+	bBefore := upstreamBCalls.Load()
+
+	req, err := http.NewRequest(
+		http.MethodGet,
+		env.URL()+"/proxy-test",
+		nil,
+	)
+	require.NoError(
+		t,
+		err,
+	)
+
+	req.Header.Set(
+		"X-API-Key",
+		"test-key",
+	)
+
+	resp, err := env.Client().Do(req)
+	require.NoError(
+		t,
+		err,
+	)
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(
+		resp.Body,
+	)
+	require.NoError(
+		t,
+		err,
+	)
+
+	assert.Equal(
+		t,
+		http.StatusCreated,
+		resp.StatusCode,
+	)
+
+	assert.Equal(
+		t,
+		"healthy",
+		string(body),
+	)
+
+	// Фиксируем количество вызовов ПОСЛЕ запроса.
+	aAfter := upstreamACalls.Load()
+	bAfter := upstreamBCalls.Load()
+
+	// Запрос не должен попасть в DOWN upstream.
+	assert.Equal(
+		t,
+		aBefore,
+		aAfter,
+	)
+
+	// Запрос должен попасть в healthy upstream.
+	assert.Greater(
+		t,
+		bAfter,
+		bBefore,
+	)
+}
