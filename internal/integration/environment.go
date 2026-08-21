@@ -69,8 +69,8 @@ func NewEnvironment(
 
 		// Default integration environment configuration.
 		//
-		// Individual tests can replace the limiter configuration
-		// through Environment.SetRateLimitConfig().
+		// Tests that require a custom limit should use
+		// NewEnvironmentWithLimits().
 		RateLimiter: ratelimit.New(
 			ratelimit.Config{
 				Capacity:       100,
@@ -81,8 +81,8 @@ func NewEnvironment(
 
 		// Default connection limit.
 		//
-		// Individual tests can replace it through
-		// Environment.SetConnectionLimit().
+		// Tests that require a custom limit should use
+		// NewEnvironmentWithLimits().
 		ConnectionLimiter: connectionlimit.New(100),
 	}
 
@@ -273,64 +273,9 @@ func (e *Environment) SetAPIKeys(
 	e.authCache.Replace(data)
 }
 
-// SetRateLimitConfig replaces the rate limiter used by the
-// integration-test environment.
-//
-// This is useful for tests that need a deliberately small
-// bucket without changing the default environment configuration.
-func (e *Environment) SetRateLimitConfig(
-	cfg ratelimit.Config,
-) {
-	// The integration environment constructs the middleware from
-	// the service instance. Replacing the limiter requires rebuilding
-	// the application pipeline, therefore this helper is intentionally
-	// implemented through the middleware chain below.
-	//
-	// The actual limiter is replaced in-place by rebuilding the proxy
-	// handler.
-	//
-	// To keep the environment API small, use a dedicated handler rebuild.
-	//
-	// This method is replaced below by rebuilding the server.
-	e.replaceProxyLimiters(cfg, nil)
-}
-
-// SetConnectionLimit replaces the connection limiter used by the
-// integration-test environment.
-func (e *Environment) SetConnectionLimit(
-	limit int,
-) {
-	e.replaceProxyLimiters(
-		ratelimit.Config{
-			Capacity:       100,
-			RefillTokens:   100,
-			RefillInterval: time.Minute,
-		},
-		&limit,
-	)
-}
-
-// replaceProxyLimiters rebuilds the integration server with the requested
-// limiter configuration.
-//
-// It intentionally keeps the helper internal to Environment so tests can
-// configure isolated limits without changing production code.
-func (e *Environment) replaceProxyLimiters(
-	rateCfg ratelimit.Config,
-	connectionLimit *int,
-) {
-	// This method is intentionally a no-op placeholder for environments
-	// that do not use dynamic limiter configuration.
-	//
-	// Integration tests that need isolated limiter values should use
-	// NewEnvironmentWithLimits below.
-}
-
-// NewEnvironmentWithLimits creates an integration environment with explicit
-// rate-limit and connection-limit settings.
-//
-// It is useful when an individual integration test needs a small bucket
-// or a small concurrency limit.
+// Default integration environment configuration.
+// Tests that require custom limits should use
+// NewEnvironmentWithLimits().
 func NewEnvironmentWithLimits(
 	rateCfg ratelimit.Config,
 	connectionLimit int,

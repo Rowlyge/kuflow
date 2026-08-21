@@ -2025,3 +2025,136 @@ func TestEnvironmentCircuitBreakerOpens(
 		snapshot.HTTP.Failed,
 	)
 }
+
+func TestEnvironmentRateLimitWithProxy(
+	t *testing.T,
+) {
+	t.Parallel()
+
+	var upstreamHits atomic.Int64
+
+	upstreamServer := httptest.NewServer(
+		http.HandlerFunc(func(
+			w http.ResponseWriter,
+			r *http.Request,
+		) {
+			upstreamHits.Add(1)
+
+			w.WriteHeader(
+				http.StatusCreated,
+			)
+
+			_, _ = w.Write(
+				[]byte("proxy-ok"),
+			)
+		}),
+	)
+	defer upstreamServer.Close()
+
+	env, err := NewEnvironmentWithLimits(
+		ratelimit.Config{
+			Capacity:       2,
+			RefillTokens:   2,
+			RefillInterval: time.Minute,
+		},
+		100,
+		upstreamServer.URL,
+	)
+	require.NoError(t, err)
+	defer env.Close()
+
+	env.SetAPIKeys(
+		authcache.APIKey{
+			Key:     "test-key",
+			Owner:   "integration-test",
+			Enabled: true,
+		},
+	)
+
+	client := env.Client()
+
+	makeRequest := func() *http.Response {
+
+		req, err := http.NewRequest(
+			http.MethodGet,
+			env.URL()+"/proxy-test",
+			nil,
+		)
+		require.NoError(
+			t,
+			err,
+		)
+
+		req.Header.Set(
+			"X-API-Key",
+			"test-key",
+		)
+
+		resp, err := client.Do(
+			req,
+		)
+		require.NoError(
+			t,
+			err,
+		)
+
+		return resp
+	}
+
+	// Запрос №1
+	resp1 := makeRequest()
+	defer resp1.Body.Close()
+
+	// Запрос №2
+	resp2 := makeRequest()
+	defer resp2.Body.Close()
+
+	assert.Equal(
+		t,
+		http.StatusCreated,
+		resp1.StatusCode,
+	)
+
+	assert.Equal(
+		t,
+		http.StatusCreated,
+		resp2.StatusCode,
+	)
+
+	assert.Equal(
+		t,
+		int64(2),
+		upstreamHits.Load(),
+	)
+
+	// Запрос №3 должен быть заблокирован лимитером.
+	resp3 := makeRequest()
+	defer resp3.Body.Close()
+
+	assert.Equal(
+		t,
+		http.StatusTooManyRequests,
+		resp3.StatusCode,
+	)
+
+	// До upstream третий запрос дойти не должен.
+	assert.Equal(
+		t,
+		int64(2),
+		upstreamHits.Load(),
+	)
+
+	snapshot := env.Collector().Snapshot()
+
+	assert.Equal(
+		t,
+		uint64(2),
+		snapshot.HTTP.Success,
+	)
+
+	assert.Equal(
+		t,
+		uint64(1),
+		snapshot.HTTP.RateLimited,
+	)
+}
