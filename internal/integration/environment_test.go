@@ -2158,3 +2158,118 @@ func TestEnvironmentRateLimitWithProxy(
 		snapshot.HTTP.RateLimited,
 	)
 }
+
+func TestEnvironmentFullProxyPipeline(
+	t *testing.T,
+) {
+	t.Parallel()
+
+	var upstreamHits atomic.Int64
+
+	upstreamServer := httptest.NewServer(
+		http.HandlerFunc(func(
+			w http.ResponseWriter,
+			r *http.Request,
+		) {
+			upstreamHits.Add(1)
+
+			w.WriteHeader(
+				http.StatusCreated,
+			)
+
+			_, _ = w.Write(
+				[]byte("pipeline-ok"),
+			)
+		}),
+	)
+	defer upstreamServer.Close()
+
+	env, err := NewEnvironment(
+		upstreamServer.URL,
+	)
+	require.NoError(t, err)
+	defer env.Close()
+
+	env.SetAPIKeys(
+		authcache.APIKey{
+			Key:     "test-key",
+			Owner:   "integration-test",
+			Enabled: true,
+		},
+	)
+
+	req, err := http.NewRequest(
+		http.MethodGet,
+		env.URL()+"/proxy-test",
+		nil,
+	)
+	require.NoError(t, err)
+
+	req.Header.Set(
+		"X-API-Key",
+		"test-key",
+	)
+
+	resp, err := env.Client().Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	assert.Equal(
+		t,
+		http.StatusCreated,
+		resp.StatusCode,
+	)
+
+	assert.Equal(
+		t,
+		"pipeline-ok",
+		string(body),
+	)
+
+	assert.Equal(
+		t,
+		int64(1),
+		upstreamHits.Load(),
+	)
+
+	collector := env.Collector()
+
+	assert.Equal(
+		t,
+		uint64(1),
+		collector.RequestsTotal(),
+	)
+
+	assert.Equal(
+		t,
+		uint64(1),
+		collector.SuccessTotal(),
+	)
+
+	assert.Equal(
+		t,
+		uint64(0),
+		collector.FailedTotal(),
+	)
+
+	assert.Equal(
+		t,
+		uint64(1),
+		collector.TelemetrySaved(),
+	)
+
+	assert.Equal(
+		t,
+		uint64(0),
+		collector.TelemetryFailed(),
+	)
+
+	assert.Equal(
+		t,
+		uint64(0),
+		collector.RateLimited(),
+	)
+}
