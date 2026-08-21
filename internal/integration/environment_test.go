@@ -12,6 +12,7 @@ import (
 	"time"
 
 	authcache "github.com/Rowlyge/kuflow/internal/auth/cache"
+	"github.com/Rowlyge/kuflow/internal/breaker"
 	"github.com/Rowlyge/kuflow/internal/ratelimit"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1887,5 +1888,140 @@ func TestEnvironmentSkipsUnhealthyUpstream(
 		t,
 		bAfter,
 		bBefore,
+	)
+}
+
+func TestEnvironmentCircuitBreakerOpens(
+	t *testing.T,
+) {
+	t.Parallel()
+
+	var upstreamCalls atomic.Int64
+
+	upstreamServer := httptest.NewServer(
+		http.HandlerFunc(func(
+			w http.ResponseWriter,
+			r *http.Request,
+		) {
+
+			upstreamCalls.Add(1)
+
+			w.WriteHeader(
+				http.StatusInternalServerError,
+			)
+
+			_, _ = w.Write(
+				[]byte("upstream-error"),
+			)
+		}),
+	)
+	defer upstreamServer.Close()
+
+	env, err := NewEnvironment(
+		upstreamServer.URL,
+	)
+	require.NoError(
+		t,
+		err,
+	)
+	defer env.Close()
+
+	env.SetAPIKeys(
+		authcache.APIKey{
+			Key:     "test-key",
+			Owner:   "integration-test",
+			Enabled: true,
+		},
+	)
+
+	makeRequest := func() int {
+
+		req, err := http.NewRequest(
+			http.MethodGet,
+			env.URL()+"/proxy-test",
+			nil,
+		)
+		require.NoError(
+			t,
+			err,
+		)
+
+		req.Header.Set(
+			"X-API-Key",
+			"test-key",
+		)
+
+		resp, err := env.Client().Do(req)
+		require.NoError(
+			t,
+			err,
+		)
+		defer resp.Body.Close()
+
+		return resp.StatusCode
+	}
+
+	// FailureThreshold = 5
+	for i := 0; i < 5; i++ {
+
+		status := makeRequest()
+
+		assert.Equal(
+			t,
+			http.StatusInternalServerError,
+			status,
+		)
+	}
+
+	// Circuit должен открыться
+	upstreams := env.upstreams.Upstreams()
+
+	require.Len(
+		t,
+		upstreams,
+		1,
+	)
+
+	assert.Equal(
+		t,
+		breaker.Open,
+		upstreams[0].Breaker.State(),
+	)
+
+	callsBefore := upstreamCalls.Load()
+
+	status := makeRequest()
+
+	// Запрос больше не должен идти в upstream
+	assert.Equal(
+		t,
+		http.StatusServiceUnavailable,
+		status,
+	)
+
+	assert.Equal(
+		t,
+		callsBefore,
+		upstreamCalls.Load(),
+	)
+
+	snapshot := env.Collector().Snapshot()
+
+	assert.Equal(
+		t,
+		uint64(6),
+		snapshot.HTTP.Requests,
+	)
+
+	assert.Equal(
+		t,
+		uint64(0),
+		snapshot.HTTP.Success,
+	)
+
+	assert.Equal(
+		t,
+		uint64(6),
+		snapshot.HTTP.Failed,
 	)
 }
