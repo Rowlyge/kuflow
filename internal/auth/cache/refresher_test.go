@@ -31,6 +31,33 @@ func (m *mockAPIKeyRepository) List(
 	return m.keys, nil
 }
 
+func (m *mockAPIKeyRepository) ListEnabled(
+	ctx context.Context,
+) ([]apikeyrepo.APIKey, error) {
+
+	if m.err != nil {
+		return nil, m.err
+	}
+
+	result := make(
+		[]apikeyrepo.APIKey,
+		0,
+		len(m.keys),
+	)
+
+	for _, key := range m.keys {
+
+		if key.Enabled {
+			result = append(
+				result,
+				key,
+			)
+		}
+	}
+
+	return result, nil
+}
+
 func (m *mockAPIKeyRepository) Create(
 	ctx context.Context,
 	key *apikeyrepo.APIKey,
