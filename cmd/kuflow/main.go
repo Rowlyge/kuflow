@@ -94,6 +94,13 @@ func main() {
 
 	cfg := config.Load()
 
+	if err := cfg.Validate(); err != nil {
+		log.Fatalf(
+			"configuration error: %v",
+			err,
+		)
+	}
+
 	application, err := app.New(cfg)
 	if err != nil {
 		log.Fatal(err)

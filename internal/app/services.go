@@ -1,8 +1,6 @@
 package app
 
 import (
-	"time"
-
 	authcache "github.com/Rowlyge/kuflow/internal/auth/cache"
 	"github.com/Rowlyge/kuflow/internal/balancer"
 	"github.com/Rowlyge/kuflow/internal/config"
@@ -46,6 +44,7 @@ func NewServices(
 	repositories *Repositories,
 	infrastructure *Infrastructure,
 ) (*Services, error) {
+
 	proxyBalancer, err := balancer.New(
 		cfg.Proxy.Balancer,
 		infrastructure.Upstreams,
@@ -75,7 +74,7 @@ func NewServices(
 
 	refresher := authcache.NewRefresher(
 		loader,
-		10*time.Second,
+		cfg.AuthCache.RefreshInterval,
 	)
 
 	auth := authservice.New(
@@ -88,23 +87,27 @@ func NewServices(
 
 	limiter := ratelimit.New(
 		ratelimit.Config{
-			Capacity:       100,
-			RefillTokens:   100,
-			RefillInterval: time.Minute,
+			Capacity: cfg.RateLimit.Capacity,
+
+			RefillTokens: cfg.RateLimit.RefillTokens,
+
+			RefillInterval: cfg.RateLimit.RefillInterval,
 		},
 	)
 
 	cleaner := ratelimit.NewCleaner(
 		limiter.Store(),
-		time.Minute,
-		10*time.Minute,
+		cfg.RateLimit.RefillInterval,
+		10*cfg.RateLimit.RefillInterval,
 	)
 
 	// =========================
 	// Runtime Connection Limiter
 	// =========================
 
-	connectionLimiter := connectionlimit.New(100)
+	connectionLimiter := connectionlimit.New(
+		cfg.ConnectionLimit.MaxConnections,
+	)
 
 	return &Services{
 		Health: service.NewHealthService(),
