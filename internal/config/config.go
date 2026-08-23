@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -15,6 +16,10 @@ type Config struct {
 	Telemetry TelemetryConfig
 	Database  DatabaseConfig
 	Auth      AuthConfig
+
+	RateLimit       RateLimitConfig
+	ConnectionLimit ConnectionLimitConfig
+	AuthCache       AuthCacheConfig
 }
 
 // ==========================
@@ -93,19 +98,43 @@ type DatabaseConfig struct {
 func Load() *Config {
 
 	return &Config{
-
-		Server: loadServerConfig(),
-
-		Proxy: loadProxyConfig(),
-
-		Health: loadHealthConfig(),
-
+		Server:    loadServerConfig(),
+		Proxy:     loadProxyConfig(),
+		Health:    loadHealthConfig(),
 		Telemetry: loadTelemetryConfig(),
+		Database:  loadDatabaseConfig(),
+		Auth:      loadAuthConfig(),
 
-		Database: loadDatabaseConfig(),
-
-		Auth: loadAuthConfig(),
+		RateLimit:       loadRateLimitConfig(),
+		ConnectionLimit: loadConnectionLimitConfig(),
+		AuthCache:       loadAuthCacheConfig(),
 	}
+}
+
+// ==========================
+// Rate Limiter
+// ==========================
+
+type RateLimitConfig struct {
+	Capacity       int
+	RefillTokens   int
+	RefillInterval time.Duration
+}
+
+// ==========================
+// Connection Limiter
+// ==========================
+
+type ConnectionLimitConfig struct {
+	MaxConnections int
+}
+
+// ==========================
+// Auth Cache
+// ==========================
+
+type AuthCacheConfig struct {
+	RefreshInterval time.Duration
 }
 
 // =====================================================
@@ -270,4 +299,83 @@ func loadDatabaseConfig() DatabaseConfig {
 			"",
 		),
 	}
+}
+
+func loadRateLimitConfig() RateLimitConfig {
+	return RateLimitConfig{
+		Capacity: mustInt(
+			"RATE_LIMIT_CAPACITY",
+			100,
+		),
+
+		RefillTokens: mustInt(
+			"RATE_LIMIT_REFILL_TOKENS",
+			100,
+		),
+
+		RefillInterval: mustDuration(
+			"RATE_LIMIT_REFILL_INTERVAL",
+			time.Minute,
+		),
+	}
+}
+
+func loadConnectionLimitConfig() ConnectionLimitConfig {
+	return ConnectionLimitConfig{
+		MaxConnections: mustInt(
+			"CONNECTION_LIMIT_MAX",
+			100,
+		),
+	}
+}
+
+func loadAuthCacheConfig() AuthCacheConfig {
+	return AuthCacheConfig{
+		RefreshInterval: mustDuration(
+			"AUTH_CACHE_REFRESH_INTERVAL",
+			10*time.Second,
+		),
+	}
+}
+
+func (c *Config) Validate() error {
+
+	if c == nil {
+		return fmt.Errorf(
+			"config is nil",
+		)
+	}
+
+	if c.Database.URL == "" {
+		return fmt.Errorf(
+			"DATABASE_URL is required",
+		)
+	}
+
+	if len(c.Proxy.Upstreams) == 0 {
+		return fmt.Errorf(
+			"PROXY_UPSTREAMS is required",
+		)
+	}
+
+	for _, upstream := range c.Proxy.Upstreams {
+
+		if strings.TrimSpace(upstream) == "" {
+			return fmt.Errorf(
+				"PROXY_UPSTREAMS contains empty value",
+			)
+		}
+	}
+
+	if strings.TrimSpace(c.Server.Port) == "" {
+		return fmt.Errorf(
+			"SERVER_PORT is required",
+		)
+	}
+
+	if c.Auth.APIKeyHeader == "" {
+		return errors.New("AUTH_API_KEY_HEADER is required")
+	}
+
+	return nil
 }
