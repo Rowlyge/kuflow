@@ -15,6 +15,20 @@ FROM api_keys
 ORDER BY id;
 `
 
+	// Получение всех активных API-ключей.
+	queryListEnabled = `
+SELECT
+    id,
+    api_key,
+    owner,
+    enabled,
+    created_at,
+    expires_at
+FROM api_keys
+WHERE enabled = true
+ORDER BY id;
+`
+
 	// Проверка существования ключа.
 	queryFindByKey = `
 SELECT

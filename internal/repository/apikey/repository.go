@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -18,8 +19,11 @@ type Repository interface {
 		key string,
 	) (*APIKey, error)
 
-	// Возвращает все API-ключи.
 	List(
+		ctx context.Context,
+	) ([]APIKey, error)
+
+	ListEnabled(
 		ctx context.Context,
 	) ([]APIKey, error)
 
@@ -74,8 +78,15 @@ func (r *repository) FindByKey(
 		&apiKey.ExpiresAt,
 	)
 
-	if err != nil {
+	if errors.Is(
+		err,
+		pgx.ErrNoRows,
+	) {
 		return nil, ErrNotFound
+	}
+
+	if err != nil {
+		return nil, err
 	}
 
 	return &apiKey, nil
@@ -89,6 +100,51 @@ func (r *repository) List(
 	rows, err := r.db.Query(
 		ctx,
 		queryList,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	keys := make([]APIKey, 0)
+
+	for rows.Next() {
+
+		var key APIKey
+
+		err := rows.Scan(
+			&key.ID,
+			&key.APIKey,
+			&key.Owner,
+			&key.Enabled,
+			&key.CreatedAt,
+			&key.ExpiresAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		keys = append(
+			keys,
+			key,
+		)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return keys, nil
+}
+
+// ListEnabled возвращает только активные API-ключи.
+func (r *repository) ListEnabled(
+	ctx context.Context,
+) ([]APIKey, error) {
+
+	rows, err := r.db.Query(
+		ctx,
+		queryListEnabled,
 	)
 	if err != nil {
 		return nil, err
