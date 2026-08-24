@@ -13,8 +13,8 @@ CREATE TABLE IF NOT EXISTS api_keys
     expires_at TIMESTAMPTZ
 );
 
-CREATE INDEX idx_api_keys_enabled
+CREATE INDEX IF NOT EXISTS idx_api_keys_enabled
 ON api_keys(enabled);
 
-CREATE INDEX idx_api_keys_owner
+CREATE INDEX IF NOT EXISTS idx_api_keys_owner
 ON api_keys(owner);

@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Rowlyge/kuflow/database"
 	"github.com/Rowlyge/kuflow/internal/app"
 	"github.com/Rowlyge/kuflow/internal/config"
 	"github.com/Rowlyge/kuflow/internal/server"
@@ -100,6 +101,17 @@ func main() {
 			err,
 		)
 	}
+
+	if err := database.RunMigrations(
+		cfg.Database.URL,
+	); err != nil {
+		log.Fatalf(
+			"failed to run migrations: %v",
+			err,
+		)
+	}
+
+	log.Println("Database migrations applied")
 
 	application, err := app.New(cfg)
 	if err != nil {

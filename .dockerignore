@@ -1,0 +1,12 @@
+.git
+.vscode
+.idea
+
+.env
+
+bin
+tmp
+
+proxy
+
+*.log

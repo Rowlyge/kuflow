@@ -1,4 +1,4 @@
-CREATE TABLE requests
+CREATE TABLE IF NOT EXISTS requests
 (
     id BIGSERIAL PRIMARY KEY,
 
@@ -20,14 +20,14 @@ CREATE TABLE requests
     created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_requests_created_at
+CREATE INDEX IF NOT EXISTS idx_requests_created_at
 ON requests(created_at);
 
-CREATE INDEX idx_requests_status_code
+CREATE INDEX IF NOT EXISTS idx_requests_status_code
 ON requests(status_code);
 
-CREATE INDEX idx_requests_path
+CREATE INDEX IF NOT EXISTS idx_requests_path
 ON requests(path);
 
-CREATE INDEX idx_requests_upstream
+CREATE INDEX IF NOT EXISTS idx_requests_upstream
 ON requests(upstream);
