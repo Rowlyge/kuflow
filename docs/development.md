@@ -1,129 +1,58 @@
-# Development Guide
+# KuFlow Deployment Guide
 
-This document describes how to set up and run KuFlow for local development.
+## Requirements
 
----
+- Docker
+- Docker Compose
 
-# Requirements
+## 1. Clone repository
 
-The following software must be installed:
+git clone ...
+cd kuflow
 
-* Ubuntu (WSL recommended)
-* Docker
-* Git
-* Visual Studio Code
-* VS Code Remote - WSL extension
+## 2. Configure environment
 
----
+cp .env.production .env
 
-# Project Location
+Edit:
 
-The project should be stored inside the Linux filesystem.
+- DATABASE_URL
+- POSTGRES_PASSWORD
+- PROXY_UPSTREAMS
 
-Recommended location:
+## 3. Start services
 
-```bash
-~/kuflow
-```
+docker compose up -d --build
 
-Avoid developing inside `/mnt/c/...` because Docker and Go tooling work better on the native Linux filesystem.
+## 4. Verify containers
 
----
+docker compose ps
 
-# Opening the Project
+Expected:
+- postgres healthy
+- kuflow running
 
-Open Ubuntu and run:
+## 5. View logs
 
-```bash
-cd ~/kuflow
-code .
-```
+docker logs -f kuflow
 
-VS Code should show **WSL: Ubuntu** in the bottom-left corner.
+Expected:
+- Database migrations applied
+- Connected to PostgreSQL
+- HTTP server started
 
----
+## 6. Health check
 
-# Starting PostgreSQL
+curl http://SERVER_IP:8080/health
 
-Run:
+## 7. Create API key
 
-```bash
-docker-compose up -d
-```
+curl -X POST ...
 
-Check running containers:
+## 8. List API keys
 
-```bash
-docker ps
-```
+curl http://SERVER_IP:8080/admin/api-keys
 
-You should see:
+## 9. Stop services
 
-```text
-proxy-postgres
-```
-
----
-
-# Stopping Services
-
-```bash
-docker-compose down
-```
-
----
-
-# Connecting to PostgreSQL
-
-```bash
-docker exec -it proxy-postgres psql -U proxy -d proxydb
-```
-
-Useful commands:
-
-```sql
-\\dt
-\\d table_name
-\\q
-```
-
----
-
-# Project Structure
-
-```text
-kuflow/
-├── docs/
-├── migrations/
-├── proxy/
-├── database/
-├── scripts/
-├── docker-compose.yml
-└── README.md
-```
-
----
-
-# Workflow
-
-Recommended workflow:
-
-1. Update documentation.
-2. Create or update migrations.
-3. Implement Go code.
-4. Test locally.
-5. Commit changes.
-
----
-
-# First-Time Setup
-
-```bash
-cd ~/kuflow
-
-docker-compose up -d
-
-docker ps
-```
-
-After this the development environment is ready.
+docker compose down
