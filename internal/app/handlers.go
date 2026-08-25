@@ -2,11 +2,13 @@ package app
 
 import (
 	"github.com/Rowlyge/kuflow/internal/handler"
+	apikeyhandler "github.com/Rowlyge/kuflow/internal/handler/apikey"
 )
 
 // Handlers объединяет HTTP-обработчики.
 type Handlers struct {
 	Health     *handler.HealthHandler
+	APIKey     *apikeyhandler.Handler
 	Metrics    *handler.MetricsHandler
 	Prometheus *handler.PrometheusHandler
 }
@@ -17,7 +19,13 @@ func NewHandlers(
 	infrastructure *Infrastructure,
 ) (*Handlers, error) {
 
+	apiKeyHandler := apikeyhandler.New(
+		services.APIKey,
+	)
+
 	return &Handlers{
+
+		APIKey: apiKeyHandler,
 
 		Health: handler.NewHealthHandler(
 			services.Health,
