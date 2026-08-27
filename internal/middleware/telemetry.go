@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Rowlyge/kuflow/internal/auth"
 	"github.com/Rowlyge/kuflow/internal/clientip"
 	"github.com/Rowlyge/kuflow/internal/model"
 	"github.com/Rowlyge/kuflow/internal/proxy"
@@ -46,6 +47,15 @@ func (t *TelemetryMiddleware) Handler(
 
 		next.ServeHTTP(rw, r)
 
+		var apiKeyID int64
+
+		if key, ok := auth.APIKeyFromContext(
+			r.Context().Value(auth.APIKeyContextKey),
+		); ok && key != nil {
+
+			apiKeyID = key.ID
+		}
+
 		request := &model.Request{
 			Method:       r.Method,
 			Path:         r.URL.Path,
@@ -57,6 +67,9 @@ func (t *TelemetryMiddleware) Handler(
 			Upstream: proxy.UpstreamNameFromContext(
 				r.Context(),
 			),
+
+			APIKeyID: apiKeyID,
+
 			CreatedAt: start,
 		}
 

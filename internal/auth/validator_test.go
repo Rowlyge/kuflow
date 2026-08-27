@@ -131,7 +131,7 @@ func TestValidator_Validate(t *testing.T) {
 
 			validator := NewValidator(cache)
 
-			err := validator.Validate(
+			_, err := validator.Validate(
 				context.Background(),
 				tt.apiKey,
 			)

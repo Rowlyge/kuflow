@@ -8,8 +8,9 @@ import (
 )
 
 type Repositories struct {
-	Request repository.RequestRepository
-	APIKey  apikeyrepo.Repository
+	Request     repository.RequestRepository
+	APIKey      apikeyrepo.Repository
+	APIKeyStats repository.APIKeyStatsRepository
 }
 
 func NewRepositories(
@@ -17,7 +18,8 @@ func NewRepositories(
 ) (*Repositories, error) {
 
 	return &Repositories{
-		Request: repository.NewPostgresRequestRepository(db),
-		APIKey:  apikeyrepo.New(db),
+		Request:     repository.NewPostgresRequestRepository(db),
+		APIKey:      apikeyrepo.New(db),
+		APIKeyStats: repository.NewPostgresAPIKeyStatsRepository(db),
 	}, nil
 }

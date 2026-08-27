@@ -7,6 +7,7 @@ import (
 	"github.com/Rowlyge/kuflow/internal/connectionlimit"
 	"github.com/Rowlyge/kuflow/internal/ratelimit"
 	"github.com/Rowlyge/kuflow/internal/service"
+	"github.com/Rowlyge/kuflow/internal/service/apikey"
 	apikeyservice "github.com/Rowlyge/kuflow/internal/service/apikey"
 	authservice "github.com/Rowlyge/kuflow/internal/service/auth"
 )
@@ -16,8 +17,9 @@ type Services struct {
 	Proxy     *service.ProxyService
 	Telemetry *service.TelemetryService
 
-	Auth   *authservice.Service
-	APIKey *apikeyservice.Service
+	Auth        *authservice.Service
+	APIKey      *apikeyservice.Service
+	APIKeyStats *apikey.StatsService
 
 	// =========================
 	// Runtime API Key Cache
@@ -87,6 +89,10 @@ func NewServices(
 		repositories.APIKey,
 	)
 
+	apiKeyStatsService := apikey.NewStatsService(
+		repositories.APIKeyStats,
+	)
+
 	// =========================
 	// Runtime Rate Limiter
 	// =========================
@@ -122,12 +128,14 @@ func NewServices(
 
 		Telemetry: service.NewTelemetryService(
 			repositories.Request,
+			repositories.APIKeyStats,
 			infrastructure.Collector,
 		),
 
 		Auth: auth,
 
-		APIKey: apiKeyService,
+		APIKey:      apiKeyService,
+		APIKeyStats: apiKeyStatsService,
 
 		AuthCache:     cache,
 		AuthLoader:    loader,

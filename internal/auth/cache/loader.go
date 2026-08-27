@@ -43,9 +43,12 @@ func (l *Loader) Load(
 	for _, key := range keys {
 
 		data[key.APIKey] = APIKey{
-			Key:     key.APIKey,
-			Owner:   key.Owner,
-			Enabled: key.Enabled,
+			ID:        key.ID,
+			Key:       key.APIKey,
+			Owner:     key.Owner,
+			Enabled:   key.Enabled,
+			CreatedAt: key.CreatedAt,
+			ExpiresAt: key.ExpiresAt,
 		}
 	}
 

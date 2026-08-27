@@ -50,9 +50,11 @@ func NewEnvironment(
 
 	collector := metrics.NewCollector()
 	requests := &memoryRequestRepository{}
+	stats := &memoryAPIKeyStatsRepository{}
 
 	telemetry := service.NewTelemetryService(
 		requests,
+		stats,
 		collector,
 	)
 
@@ -289,9 +291,11 @@ func NewEnvironmentWithLimits(
 
 	collector := metrics.NewCollector()
 	requests := &memoryRequestRepository{}
+	stats := &memoryAPIKeyStatsRepository{}
 
 	telemetry := service.NewTelemetryService(
 		requests,
+		stats,
 		collector,
 	)
 
@@ -444,4 +448,29 @@ func (r *memoryRequestRepository) Create(
 
 func (e *Environment) Collector() *metrics.Collector {
 	return e.collector
+}
+
+type memoryAPIKeyStatsRepository struct{}
+
+var _ repository.APIKeyStatsRepository = (*memoryAPIKeyStatsRepository)(nil)
+
+func (r *memoryAPIKeyStatsRepository) UpdateUsage(
+	ctx context.Context,
+	apiKeyID int64,
+	ip string,
+) error {
+	return nil
+}
+
+func (r *memoryAPIKeyStatsRepository) GetByAPIKeyID(
+	ctx context.Context,
+	apiKeyID int64,
+) (*model.APIKeyStats, error) {
+	return &model.APIKeyStats{}, nil
+}
+
+func (r *memoryAPIKeyStatsRepository) List(
+	ctx context.Context,
+) ([]model.APIKeyStats, error) {
+	return []model.APIKeyStats{}, nil
 }

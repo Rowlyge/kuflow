@@ -1,8 +1,10 @@
 package middleware
 
 import (
+	"context"
 	"net/http"
 
+	"github.com/Rowlyge/kuflow/internal/auth"
 	authservice "github.com/Rowlyge/kuflow/internal/service/auth"
 )
 
@@ -22,7 +24,7 @@ func NewAuth(
 
 			apiKey := r.Header.Get(HeaderAPIKey)
 
-			err := service.Validate(
+			key, err := service.Validate(
 				r.Context(),
 				apiKey,
 			)
@@ -38,9 +40,15 @@ func NewAuth(
 				return
 			}
 
+			ctx := context.WithValue(
+				r.Context(),
+				auth.APIKeyContextKey,
+				key,
+			)
+
 			next.ServeHTTP(
 				w,
-				r,
+				r.WithContext(ctx),
 			)
 		})
 	}

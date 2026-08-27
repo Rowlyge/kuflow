@@ -1,13 +1,15 @@
 package auth
 
-import "context"
+import (
+	"context"
 
-// Service предоставляет сервис авторизации.
+	authcache "github.com/Rowlyge/kuflow/internal/auth/cache"
+)
+
 type Service struct {
 	validator *Validator
 }
 
-// New создаёт сервис авторизации.
 func New(
 	validator *Validator,
 ) *Service {
@@ -17,11 +19,10 @@ func New(
 	}
 }
 
-// Validate проверяет API Key.
 func (s *Service) Validate(
 	ctx context.Context,
 	apiKey string,
-) error {
+) (*authcache.APIKey, error) {
 
 	return s.validator.Validate(
 		ctx,
