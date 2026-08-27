@@ -7,8 +7,11 @@ import (
 
 // Handlers объединяет HTTP-обработчики.
 type Handlers struct {
-	Health     *handler.HealthHandler
-	APIKey     *apikeyhandler.Handler
+	Health *handler.HealthHandler
+
+	APIKey      *apikeyhandler.Handler
+	APIKeyStats *apikeyhandler.StatsHandler
+
 	Metrics    *handler.MetricsHandler
 	Prometheus *handler.PrometheusHandler
 }
@@ -23,9 +26,15 @@ func NewHandlers(
 		services.APIKey,
 	)
 
+	apiKeyStatsHandler := apikeyhandler.NewStatsHandler(
+		services.APIKeyStats,
+	)
+
 	return &Handlers{
 
 		APIKey: apiKeyHandler,
+
+		APIKeyStats: apiKeyStatsHandler,
 
 		Health: handler.NewHealthHandler(
 			services.Health,

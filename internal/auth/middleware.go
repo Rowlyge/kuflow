@@ -1,10 +1,15 @@
 package auth
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/Rowlyge/kuflow/internal/config"
 )
+
+type contextKey string
+
+const APIKeyContextKey contextKey = "api_key"
 
 type Middleware struct {
 	validator *Validator
@@ -18,10 +23,8 @@ func NewMiddleware(
 ) *Middleware {
 
 	return &Middleware{
-
 		validator: validator,
-
-		header: cfg.APIKeyHeader,
+		header:    cfg.APIKeyHeader,
 	}
 }
 
@@ -36,10 +39,12 @@ func (m *Middleware) Wrap(
 
 		apiKey := r.Header.Get(m.header)
 
-		if err := m.validator.Validate(
+		key, err := m.validator.Validate(
 			r.Context(),
 			apiKey,
-		); err != nil {
+		)
+
+		if err != nil {
 
 			http.Error(
 				w,
@@ -50,9 +55,15 @@ func (m *Middleware) Wrap(
 			return
 		}
 
+		ctx := context.WithValue(
+			r.Context(),
+			APIKeyContextKey,
+			key,
+		)
+
 		next.ServeHTTP(
 			w,
-			r,
+			r.WithContext(ctx),
 		)
 	})
 }

@@ -27,30 +27,30 @@ func NewValidator(
 func (v *Validator) Validate(
 	ctx context.Context,
 	apiKey string,
-) error {
+) (*authcache.APIKey, error) {
 
 	_ = ctx
 
 	apiKey = strings.TrimSpace(apiKey)
 
 	if apiKey == "" {
-		return ErrMissingAPIKey
+		return nil, ErrMissingAPIKey
 	}
 
 	key, ok := v.cache.Get(apiKey)
 	if !ok {
-		return ErrInvalidAPIKey
+		return nil, ErrInvalidAPIKey
 	}
 
 	if !key.Enabled {
-		return ErrDisabledAPIKey
+		return nil, ErrDisabledAPIKey
 	}
 
 	if key.ExpiresAt != nil &&
 		time.Now().After(*key.ExpiresAt) {
 
-		return ErrExpiredAPIKey
+		return nil, ErrExpiredAPIKey
 	}
 
-	return nil
+	return &key, nil
 }

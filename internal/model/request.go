@@ -9,6 +9,9 @@ type Request struct {
 	// Идентификатор записи.
 	ID int64
 
+	// ID API ключа.
+	APIKeyID int64
+
 	// HTTP-метод.
 	Method string
 

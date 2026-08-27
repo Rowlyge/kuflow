@@ -58,6 +58,18 @@ func New(app *app.App) *http.ServeMux {
 		),
 	)
 
+	mux.Handle(
+		"/admin/api-keys/stats",
+		middleware.Default(
+			http.HandlerFunc(
+				app.Handlers.APIKeyStats.List,
+			),
+
+			app.Middlewares.RequestID,
+			app.Middlewares.Logger,
+		),
+	)
+
 	// Admin API Keys
 	mux.Handle(
 		"/admin/api-keys",
