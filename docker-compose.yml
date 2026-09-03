@@ -33,5 +33,11 @@ services:
     ports:
       - "18080:8080"
 
+  upstream1:
+    image: kennethreitz/httpbin
+    container_name: upstream1
+
+    restart: unless-stopped
+
 volumes:
   postgres_data:
