@@ -37,6 +37,11 @@ type Repository interface {
 		id int64,
 	) error
 
+	Enable(
+		ctx context.Context,
+		id int64,
+	) error
+
 	Delete(
 		ctx context.Context,
 		id int64,
@@ -209,6 +214,20 @@ func (r *repository) Disable(
 	_, err := r.db.Exec(
 		ctx,
 		queryDisable,
+		id,
+	)
+
+	return err
+}
+
+func (r *repository) Enable(
+	ctx context.Context,
+	id int64,
+) error {
+
+	_, err := r.db.Exec(
+		ctx,
+		queryEnable,
 		id,
 	)
 

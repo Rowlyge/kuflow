@@ -51,6 +51,13 @@ func (m *mockLoaderRepository) Disable(
 	return errors.New("not implemented")
 }
 
+func (m *mockLoaderRepository) Enable(
+	ctx context.Context,
+	id int64,
+) error {
+	return errors.New("not implemented")
+}
+
 func (m *mockLoaderRepository) Delete(
 	ctx context.Context,
 	id int64,
