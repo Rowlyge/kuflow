@@ -72,6 +72,13 @@ func (m *mockAPIKeyRepository) Disable(
 	return errors.New("not implemented")
 }
 
+func (m *mockAPIKeyRepository) Enable(
+	ctx context.Context,
+	id int64,
+) error {
+	return errors.New("not implemented")
+}
+
 func (m *mockAPIKeyRepository) Delete(
 	ctx context.Context,
 	id int64,

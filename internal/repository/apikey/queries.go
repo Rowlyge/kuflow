@@ -74,4 +74,9 @@ WHERE id = $1;
 DELETE FROM api_keys
 WHERE id = $1;
 `
+	queryEnable = `
+UPDATE api_keys
+SET enabled = true
+WHERE id = $1;
+`
 )
